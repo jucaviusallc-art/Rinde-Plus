@@ -1,0 +1,10 @@
+{
+  "name": "Rinde+",
+  "short_name": "Rinde+",
+  "description": "Controla tus compras y haz rendir tu dinero.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": []
+}

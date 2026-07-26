@@ -2,10 +2,24 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vite';
-
+import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+  react(),
+  tailwindcss(),
+  VitePWA({
+    registerType: 'autoUpdate',
+manifest: {
+  name: 'Rinde+',
+  short_name: 'Rinde+',
+  description: 'Controla tus compras y haz rendir tu dinero.',
+  theme_color: '#ffffff',
+  background_color: '#ffffff',
+  display: 'standalone',
+},
+  }),
+],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
