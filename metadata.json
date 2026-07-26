@@ -1,0 +1,6 @@
+{
+  "name": "Rinde+",
+  "description": "Control de presupuesto de compras en tiempo real para Venezuela con tasa oficial BCV y tasa personalizada.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
