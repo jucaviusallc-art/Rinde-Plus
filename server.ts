@@ -83,7 +83,7 @@ const defaultDb: DatabaseSchema = {
   budget: {
     id: 1,
     user_id: "user_default",
-    monto_bs: 3500.0,
+    monto_bs: 0.0,
     tipo_tasa: "bcv",
     tasa_custom: 742.23,
     spent_bs: 0.0,
