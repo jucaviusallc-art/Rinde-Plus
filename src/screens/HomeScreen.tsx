@@ -133,6 +133,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 placeholder="Ej: 3500.00"
                 value={montoBsStr}
                 onChange={(e) => setMontoBsStr(e.target.value)}
+                onFocus={(e) => e.target.select()}
                 required
                 id="input-presupuesto-bs"
                 className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 rounded-2xl font-bold text-2xl text-slate-900 dark:text-white focus:ring-2 focus:ring-[#2E7D32] focus:border-transparent outline-none transition-all"
@@ -241,6 +242,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   placeholder="Ej: 75.50"
                   value={tasaCustomStr}
                   onChange={(e) => setTasaCustomStr(e.target.value)}
+                  onFocus={(e) => e.target.select()}
                   id="input-tasa-custom"
                   className="w-full pl-14 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-xl font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-[#2E7D32] outline-none"
                 />
