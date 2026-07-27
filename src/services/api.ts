@@ -7,7 +7,8 @@ import {
   RateType,
 } from "../types";
 
-const API_BASE = "/app-api";
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://rinde-plus.onrender.com';
+const API_BASE = `${BASE_URL.replace(/\/$/, '')}/app-api`;
 
 export const apiService = {
   // Fetch budget
