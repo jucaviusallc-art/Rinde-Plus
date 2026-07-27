@@ -4,7 +4,7 @@
     "user_id": "user_default",
     "monto_bs": 3500,
     "tipo_tasa": "bcv",
-    "tasa_custom": 72.5,
+    "tasa_custom": 742.23,
     "spent_bs": 0,
     "updated_at": "2026-07-27T08:00:00.000Z"
   },
@@ -14,7 +14,7 @@
   "exchange_rates": [
     {
       "id": 1,
-      "rate_usd": 72.5,
+      "rate_usd": 742.23,
       "rate_date": "2026-07-27",
       "source": "Banco Central de Venezuela (BCV)",
       "created_at": "2026-07-27T08:00:00.000Z"

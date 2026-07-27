@@ -85,7 +85,7 @@ const defaultDb: DatabaseSchema = {
     user_id: "user_default",
     monto_bs: 3500.0,
     tipo_tasa: "bcv",
-    tasa_custom: 72.5,
+    tasa_custom: 742.23,
     spent_bs: 0.0,
     updated_at: new Date().toISOString(),
   },
@@ -95,7 +95,7 @@ const defaultDb: DatabaseSchema = {
   exchange_rates: [
     {
       id: 1,
-      rate_usd: 72.5,
+      rate_usd: 742.23,
       rate_date: new Date().toISOString().split("T")[0],
       source: "Banco Central de Venezuela (BCV)",
       created_at: new Date().toISOString(),
@@ -126,7 +126,6 @@ function writeDb(db: DatabaseSchema) {
   }
 }
 
-// Función con ajuste automático de escala para la tasa oficial
 async function scrapeBcvRate(): Promise<number | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
@@ -143,15 +142,10 @@ async function scrapeBcvRate(): Promise<number | null> {
       throw new Error(`DolarApi respondió con estado ${res.status}`);
     }
     const data = (await res.json()) as { promedio?: number };
-    let rate = Number(data.promedio);
+    const rate = Number(data.promedio);
 
     if (!Number.isFinite(rate) || rate <= 0) {
       throw new Error("La API devolvió una tasa inválida");
-    }
-
-    // Normaliza la escala si la API devuelve el número multiplicado (ej. 742.22 -> 74.22)
-    while (rate > 200) {
-      rate = rate / 10;
     }
 
     return Math.round(rate * 100) / 100;
@@ -172,7 +166,7 @@ async function startServer() {
     const activeRate =
       db.budget.tipo_tasa === "custom"
         ? db.budget.tasa_custom
-        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 72.5;
+        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 742.23;
 
     const totalBs = db.cart_items.reduce((acc, item) => {
       const rate = item.rate_used || activeRate;
@@ -189,7 +183,7 @@ async function startServer() {
     const activeRate =
       db.budget.tipo_tasa === "custom"
         ? db.budget.tasa_custom
-        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 72.5;
+        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 742.23;
 
     recalculateSpentBs(db);
     writeDb(db);
@@ -214,7 +208,7 @@ async function startServer() {
 
     if (monto_bs !== undefined) db.budget.monto_bs = parseFloat(monto_bs) || 0;
     if (tipo_tasa === "bcv" || tipo_tasa === "custom") db.budget.tipo_tasa = tipo_tasa;
-    if (tasa_custom !== undefined) db.budget.tasa_custom = parseFloat(tasa_custom) || 72.5;
+    if (tasa_custom !== undefined) db.budget.tasa_custom = parseFloat(tasa_custom) || 742.23;
 
     db.budget.updated_at = new Date().toISOString();
     recalculateSpentBs(db);
@@ -223,7 +217,7 @@ async function startServer() {
     const activeRate =
       db.budget.tipo_tasa === "custom"
         ? db.budget.tasa_custom
-        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 72.5;
+        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 742.23;
 
     res.json({
       success: true,
@@ -241,7 +235,7 @@ async function startServer() {
     const db = readDb();
     const latestRateRecord: ExchangeRate = db.exchange_rates[db.exchange_rates.length - 1] || {
       id: 1,
-      rate_usd: 72.5,
+      rate_usd: 742.23,
       rate_date: new Date().toISOString().split("T")[0],
       source: "Banco Central de Venezuela (BCV)",
       created_at: new Date().toISOString(),
@@ -272,7 +266,7 @@ async function startServer() {
     }
 
     const latestRate = db.exchange_rates[db.exchange_rates.length - 1] || {
-      rate_usd: 72.5,
+      rate_usd: 742.23,
       rate_date: new Date().toISOString().split("T")[0],
       source: "Banco Central de Venezuela (BCV)",
     };
