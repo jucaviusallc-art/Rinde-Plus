@@ -4,173 +4,23 @@
     "user_id": "user_default",
     "monto_bs": 3500,
     "tipo_tasa": "bcv",
-    "tasa_custom": 742.23,
+    "tasa_custom": 72.5,
     "spent_bs": 0,
-    "updated_at": "2026-07-24T20:15:40.576Z"
+    "updated_at": "2026-07-27T08:00:00.000Z"
   },
   "cart_items": [],
-  "shopping_history": [
-    {
-      "id": 1,
-      "user_id": "user_default",
-      "date": "2026-07-22T20:15:40.577Z",
-      "total_bs": 1450,
-      "total_usd": 20,
-      "rate_used": 72.5,
-      "budget_bs": 3000,
-      "remaining_bs": 1550,
-      "items": [
-        {
-          "name": "Harina Pan 1kg",
-          "price_usd": 1.1,
-          "price_bs": 79.75,
-          "quantity": 4,
-          "subtotal_usd": 4.4,
-          "subtotal_bs": 319
-        },
-        {
-          "name": "Quesa Guayanés 500g",
-          "price_usd": 4.5,
-          "price_bs": 326.25,
-          "quantity": 2,
-          "subtotal_usd": 9,
-          "subtotal_bs": 652.5
-        },
-        {
-          "name": "Café Fama de América 250g",
-          "price_usd": 3.3,
-          "price_bs": 239.25,
-          "quantity": 2,
-          "subtotal_usd": 6.6,
-          "subtotal_bs": 478.5
-        }
-      ],
-      "created_at": "2026-07-22T20:15:40.577Z"
-    }
-  ],
-  "community_prices": [
-    {
-      "id": 1,
-      "product": "Harina de Maíz Precocida 1kg",
-      "price_usd": 1.05,
-      "price_bs": 76.12,
-      "supermarket": "Unicasa",
-      "city": "Caracas",
-      "state": "Distrito Capital",
-      "user_name": "María G.",
-      "created_at": "2026-07-24T16:15:40.577Z"
-    },
-    {
-      "id": 2,
-      "product": "Harina de Maíz Precocida 1kg",
-      "price_usd": 1.15,
-      "price_bs": 83.37,
-      "supermarket": "Excelsior Gama",
-      "city": "Caracas",
-      "state": "Miranda",
-      "user_name": "Carlos P.",
-      "created_at": "2026-07-24T18:15:40.577Z"
-    },
-    {
-      "id": 3,
-      "product": "Arroz Primor Blanco 1kg",
-      "price_usd": 1.2,
-      "price_bs": 87,
-      "supermarket": "Forum",
-      "city": "Valencia",
-      "state": "Carabobo",
-      "user_name": "Ana V.",
-      "created_at": "2026-07-24T10:15:40.577Z"
-    },
-    {
-      "id": 4,
-      "product": "Aceite Vegetal 1L",
-      "price_usd": 2.8,
-      "price_bs": 203,
-      "supermarket": "Makro",
-      "city": "Maracaibo",
-      "state": "Zulia",
-      "user_name": "José L.",
-      "created_at": "2026-07-24T19:15:40.577Z"
-    },
-    {
-      "id": 5,
-      "product": "Cartón de Huevos 30ud",
-      "price_usd": 4.8,
-      "price_bs": 348,
-      "supermarket": "HiperLider",
-      "city": "Barquisimeto",
-      "state": "Lara",
-      "user_name": "Elena R.",
-      "created_at": "2026-07-24T14:15:40.577Z"
-    }
-  ],
+  "shopping_history": [],
+  "community_prices": [],
   "exchange_rates": [
     {
       "id": 1,
-      "rate_usd": 742.23,
-      "rate_date": "2026-07-24",
+      "rate_usd": 72.5,
+      "rate_date": "2026-07-27",
       "source": "Banco Central de Venezuela (BCV)",
-      "created_at": "2026-07-24T20:15:40.577Z"
-    },
-    {
-      "id": 2,
-      "rate_usd": 742.23,
-      "rate_date": "2026-07-24",
-      "source": "BCV Oficial (Caché)",
-      "created_at": "2026-07-24T20:18:36.453Z"
-    },
-    {
-      "id": 3,
-      "rate_usd": 737.88,
-      "rate_date": "2026-07-25",
-      "source": "Live BCV Scrape (bcv.org.ve)",
-      "created_at": "2026-07-25T20:40:08.680Z"
-    },
-    {
-      "id": 4,
-      "rate_usd": 737.88,
-      "rate_date": "2026-07-25",
-      "source": "Live BCV Scrape (bcv.org.ve)",
-      "created_at": "2026-07-25T20:41:10.558Z"
-    },
-    {
-      "id": 5,
-      "rate_usd": 737.88,
-      "rate_date": "2026-07-25",
-      "source": "Live BCV Scrape (bcv.org.ve)",
-      "created_at": "2026-07-25T20:44:23.662Z"
-    },
-    {
-      "id": 6,
-      "rate_usd": 737.88,
-      "rate_date": "2026-07-25",
-      "source": "Live BCV Scrape (bcv.org.ve)",
-      "created_at": "2026-07-25T21:52:53.135Z"
-    },
-    {
-      "id": 7,
-      "rate_usd": 737.88,
-      "rate_date": "2026-07-25",
-      "source": "Live BCV Scrape (bcv.org.ve)",
-      "created_at": "2026-07-25T21:52:56.679Z"
-    },
-    {
-      "id": 8,
-      "rate_usd": 737.88,
-      "rate_date": "2026-07-25",
-      "source": "Live BCV Scrape (bcv.org.ve)",
-      "created_at": "2026-07-25T21:52:57.744Z"
-    },
-    {
-      "id": 9,
-      "rate_usd": 737.88,
-      "rate_date": "2026-07-25",
-      "source": "Live BCV Scrape (bcv.org.ve)",
-      "created_at": "2026-07-25T21:53:06.904Z"
+      "created_at": "2026-07-27T08:00:00.000Z"
     }
   ],
-  "next_cart_id": 10,
-  "next_history_id": 2,
-  "next_community_id": 6
+  "next_cart_id": 1,
+  "next_history_id": 1,
+  "next_community_id": 1
 }
