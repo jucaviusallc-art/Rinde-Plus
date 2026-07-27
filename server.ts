@@ -178,6 +178,7 @@ async function startServer() {
     return roundedSpent;
   };
 
+  // --- ENDPOINTS BUDGET ---
   app.get(["/app-api/budget", "/api/budget"], (req, res) => {
     const db = readDb();
     const activeRate =
@@ -231,6 +232,75 @@ async function startServer() {
     });
   });
 
+  // --- ENDPOINTS CART (CARRITO) ---
+  app.get(["/app-api/cart", "/api/cart"], (req, res) => {
+    const db = readDb();
+    const activeRate =
+      db.budget.tipo_tasa === "custom"
+        ? db.budget.tasa_custom
+        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 742.23;
+
+    const items = db.cart_items.map((item) => {
+      const rate = item.rate_used || activeRate;
+      const price_bs = Math.round(item.price_usd * rate * 100) / 100;
+      const subtotal_usd = Math.round(item.price_usd * item.quantity * 100) / 100;
+      const subtotal_bs = Math.round(price_bs * item.quantity * 100) / 100;
+
+      return {
+        ...item,
+        price_bs,
+        subtotal_usd,
+        subtotal_bs,
+      };
+    });
+
+    res.json(items);
+  });
+
+  app.post(["/app-api/cart", "/api/cart"], (req, res) => {
+    const db = readDb();
+    const { name, price_usd, quantity } = req.body;
+
+    const activeRate =
+      db.budget.tipo_tasa === "custom"
+        ? db.budget.tasa_custom
+        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 742.23;
+
+    const newItem: CartItem = {
+      id: db.next_cart_id++,
+      user_id: "user_default",
+      name: name || "Producto sin nombre",
+      price_usd: parseFloat(price_usd) || 0,
+      quantity: parseInt(quantity) || 1,
+      rate_used: activeRate,
+      created_at: new Date().toISOString(),
+    };
+
+    db.cart_items.push(newItem);
+    recalculateSpentBs(db);
+    writeDb(db);
+
+    res.json({ success: true, item: newItem });
+  });
+
+  app.delete(["/app-api/cart/:id", "/api/cart/:id"], (req, res) => {
+    const db = readDb();
+    const id = parseInt(req.params.id);
+    db.cart_items = db.cart_items.filter((item) => item.id !== id);
+    recalculateSpentBs(db);
+    writeDb(db);
+    res.json({ success: true });
+  });
+
+  app.delete(["/app-api/cart", "/api/cart"], (req, res) => {
+    const db = readDb();
+    db.cart_items = [];
+    recalculateSpentBs(db);
+    writeDb(db);
+    res.json({ success: true });
+  });
+
+  // --- ENDPOINTS EXCHANGE RATE ---
   app.get(["/app-api/exchange-rate-public", "/api/exchange-rate-public"], (req, res) => {
     const db = readDb();
     const latestRateRecord: ExchangeRate = db.exchange_rates[db.exchange_rates.length - 1] || {
