@@ -126,6 +126,7 @@ function writeDb(db: DatabaseSchema) {
   }
 }
 
+// Función con ajuste automático de escala para la tasa oficial
 async function scrapeBcvRate(): Promise<number | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
@@ -142,15 +143,20 @@ async function scrapeBcvRate(): Promise<number | null> {
       throw new Error(`DolarApi respondió con estado ${res.status}`);
     }
     const data = (await res.json()) as { promedio?: number };
-    const rate = Number(data.promedio);
+    let rate = Number(data.promedio);
 
-    if (!Number.isFinite(rate) || rate <= 10 || rate >= 10000) {
+    if (!Number.isFinite(rate) || rate <= 0) {
       throw new Error("La API devolvió una tasa inválida");
+    }
+
+    // Normaliza la escala si la API devuelve el número multiplicado (ej. 742.22 -> 74.22)
+    while (rate > 200) {
+      rate = rate / 10;
     }
 
     return Math.round(rate * 100) / 100;
   } catch (e) {
-    console.error("Error al consultar DolarApi:", e);
+    console.error("Error al consultar la tasa oficial:", e);
     return null;
   } finally {
     clearTimeout(timeout);
