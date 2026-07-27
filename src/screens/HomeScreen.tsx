@@ -31,7 +31,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   isRefreshingRate,
 }) => {
   const [montoBsStr, setMontoBsStr] = useState<string>(
-    budget?.monto_bs ? budget.monto_bs.toString() : "3500"
+    budget?.monto_bs ? budget.monto_bs.toString() : "0"
   );
   const [tipoTasa, setTipoTasa] = useState<RateType>(
     budget?.tipo_tasa || "bcv"
