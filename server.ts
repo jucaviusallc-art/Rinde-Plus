@@ -528,28 +528,35 @@ async function startServer() {
       0,
       Math.round((budget.monto_bs - totalBs) * 100) / 100
     );
+    const checkoutAt = new Date().toISOString();
 
     const record: HistoryRecord = {
       id: db.next_history_id++,
       user_id: userId,
-      date: new Date().toISOString().split("T")[0],
+      date: checkoutAt,
       total_bs: totalBs,
       total_usd: totalUsd,
       rate_used: activeRate,
       budget_bs: budget.monto_bs,
       remaining_bs: remainingBs,
       items,
-      created_at: new Date().toISOString(),
+      created_at: checkoutAt,
     };
 
     db.shopping_history.push(record);
     db.cart_items = db.cart_items.filter(
       (item) => item.user_id !== userId
     );
+    budget.monto_bs = remainingBs;
     budget.spent_bs = 0;
+    budget.updated_at = checkoutAt;
     writeDb(db);
 
-    return res.json({ success: true, record });
+    return res.json({
+      success: true,
+      record,
+      budget: buildBudgetResponse(db, budget),
+    });
   });
 
   // --- HISTORIAL ---
