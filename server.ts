@@ -1,21 +1,18 @@
 import cors from "cors";
-import express, { Request, Response } from "express";
+import express, { Request } from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(process.cwd(), "db_rinde.json");
 const DEFAULT_RATE = 742.23;
-const DEFAULT_USER_ID = "user_default";
-
-type RateType = "bcv" | "custom";
 
 interface Budget {
   id: number;
   user_id: string;
   monto_bs: number;
-  tipo_tasa: RateType;
+  tipo_tasa: "bcv" | "custom";
   tasa_custom: number;
   spent_bs: number;
   updated_at: string;
@@ -31,15 +28,6 @@ interface CartItem {
   created_at: string;
 }
 
-interface SnapshotItem {
-  name: string;
-  price_usd: number;
-  price_bs: number;
-  quantity: number;
-  subtotal_usd: number;
-  subtotal_bs: number;
-}
-
 interface HistoryRecord {
   id: number;
   user_id: string;
@@ -49,13 +37,19 @@ interface HistoryRecord {
   rate_used: number;
   budget_bs: number;
   remaining_bs: number;
-  items: SnapshotItem[];
+  items: Array<{
+    name: string;
+    price_usd: number;
+    price_bs: number;
+    quantity: number;
+    subtotal_usd: number;
+    subtotal_bs: number;
+  }>;
   created_at: string;
 }
 
 interface CommunityPrice {
   id: number;
-  user_id?: string;
   product: string;
   price_usd: number;
   price_bs: number;
@@ -63,7 +57,6 @@ interface CommunityPrice {
   city: string;
   state: string;
   user_name: string;
-  rate_used?: number;
   created_at: string;
 }
 
@@ -85,7 +78,6 @@ interface DatabaseSchema {
   next_cart_id: number;
   next_history_id: number;
   next_community_id: number;
-  next_exchange_rate_id: number;
 }
 
 interface LegacyDatabaseSchema {
@@ -99,46 +91,9 @@ interface LegacyDatabaseSchema {
   next_cart_id?: number;
   next_history_id?: number;
   next_community_id?: number;
-  next_exchange_rate_id?: number;
 }
 
-function roundMoney(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
-function positiveNumber(value: unknown): number | null {
-  const parsed = Number(value);
-
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
-  }
-
-  return parsed;
-}
-
-function nonNegativeNumber(value: unknown): number | null {
-  const parsed = Number(value);
-
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return null;
-  }
-
-  return parsed;
-}
-
-function positiveInteger(value: unknown): number | null {
-  const parsed = Number(value);
-
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return null;
-  }
-
-  return parsed;
-}
-
-function createDefaultDb(): DatabaseSchema {
-  const now = new Date().toISOString();
-
+function createEmptyDatabase(): DatabaseSchema {
   return {
     budgets: [],
     cart_items: [],
@@ -148,317 +103,168 @@ function createDefaultDb(): DatabaseSchema {
       {
         id: 1,
         rate_usd: DEFAULT_RATE,
-        rate_date: now.split("T")[0],
+        rate_date: new Date().toISOString().split("T")[0],
         source: "Banco Central de Venezuela (BCV)",
-        created_at: now,
+        created_at: new Date().toISOString(),
       },
     ],
     next_budget_id: 1,
     next_cart_id: 1,
     next_history_id: 1,
     next_community_id: 1,
-    next_exchange_rate_id: 2,
   };
 }
 
-function calculateNextId(items: Array<{ id: number }>): number {
-  const highestId = items.reduce((highest, item) => {
-    return Math.max(highest, Number(item.id) || 0);
-  }, 0);
+function normalizeDatabase(raw: LegacyDatabaseSchema): DatabaseSchema {
+  const budgets = Array.isArray(raw.budgets)
+    ? raw.budgets
+    : raw.budget
+      ? [raw.budget]
+      : [];
 
-  return highestId + 1;
-}
-
-function migrateDatabase(raw: LegacyDatabaseSchema): DatabaseSchema {
-  const fallback = createDefaultDb();
-
-  let budgets: Budget[] = [];
-
-  if (Array.isArray(raw.budgets)) {
-    budgets = raw.budgets;
-  } else if (raw.budget && typeof raw.budget === "object") {
-    budgets = [
-      {
-        ...raw.budget,
-        user_id: raw.budget.user_id || DEFAULT_USER_ID,
-      },
-    ];
-  }
-
-  const cartItems = Array.isArray(raw.cart_items)
-    ? raw.cart_items.map((item) => ({
-        ...item,
-        user_id: item.user_id || DEFAULT_USER_ID,
-      }))
+  const cartItems = Array.isArray(raw.cart_items) ? raw.cart_items : [];
+  const history = Array.isArray(raw.shopping_history)
+    ? raw.shopping_history
     : [];
-
-  const shoppingHistory = Array.isArray(raw.shopping_history)
-    ? raw.shopping_history.map((record) => ({
-        ...record,
-        user_id: record.user_id || DEFAULT_USER_ID,
-      }))
-    : [];
-
   const communityPrices = Array.isArray(raw.community_prices)
     ? raw.community_prices
     : [];
-
   const exchangeRates =
     Array.isArray(raw.exchange_rates) && raw.exchange_rates.length > 0
       ? raw.exchange_rates
-      : fallback.exchange_rates;
+      : createEmptyDatabase().exchange_rates;
 
   return {
     budgets,
     cart_items: cartItems,
-    shopping_history: shoppingHistory,
+    shopping_history: history,
     community_prices: communityPrices,
     exchange_rates: exchangeRates,
-    next_budget_id: Math.max(
-      Number(raw.next_budget_id) || 1,
-      calculateNextId(budgets)
-    ),
-    next_cart_id: Math.max(
-      Number(raw.next_cart_id) || 1,
-      calculateNextId(cartItems)
-    ),
-    next_history_id: Math.max(
-      Number(raw.next_history_id) || 1,
-      calculateNextId(shoppingHistory)
-    ),
-    next_community_id: Math.max(
-      Number(raw.next_community_id) || 1,
-      calculateNextId(communityPrices)
-    ),
-    next_exchange_rate_id: Math.max(
-      Number(raw.next_exchange_rate_id) || 1,
-      calculateNextId(exchangeRates)
-    ),
+    next_budget_id:
+      raw.next_budget_id ??
+      Math.max(0, ...budgets.map((budget) => budget.id || 0)) + 1,
+    next_cart_id:
+      raw.next_cart_id ??
+      Math.max(0, ...cartItems.map((item) => item.id || 0)) + 1,
+    next_history_id:
+      raw.next_history_id ??
+      Math.max(0, ...history.map((record) => record.id || 0)) + 1,
+    next_community_id:
+      raw.next_community_id ??
+      Math.max(0, ...communityPrices.map((price) => price.id || 0)) + 1,
   };
 }
 
 function readDb(): DatabaseSchema {
   try {
-    if (!fs.existsSync(DB_FILE)) {
-      const newDb = createDefaultDb();
-      writeDb(newDb);
-      return newDb;
+    if (fs.existsSync(DB_FILE)) {
+      const data = fs.readFileSync(DB_FILE, "utf-8");
+      return normalizeDatabase(JSON.parse(data));
     }
-
-    const fileContent = fs.readFileSync(DB_FILE, "utf-8").trim();
-
-    if (!fileContent) {
-      const newDb = createDefaultDb();
-      writeDb(newDb);
-      return newDb;
-    }
-
-    const parsed = JSON.parse(fileContent) as LegacyDatabaseSchema;
-    const migrated = migrateDatabase(parsed);
-
-    return migrated;
-  } catch (error) {
-    console.error("Error leyendo db_rinde.json:", error);
-
-    const fallback = createDefaultDb();
-
-    try {
-      writeDb(fallback);
-    } catch {
-      // El error original ya fue registrado.
-    }
-
-    return fallback;
+  } catch (err) {
+    console.error("Error reading database file, using fallback:", err);
   }
+
+  return createEmptyDatabase();
 }
 
 function writeDb(db: DatabaseSchema): void {
-  const temporaryFile = `${DB_FILE}.tmp`;
-
-  fs.writeFileSync(
-    temporaryFile,
-    JSON.stringify(db, null, 2),
-    "utf-8"
-  );
-
-  fs.renameSync(temporaryFile, DB_FILE);
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Error writing database file:", err);
+  }
 }
 
 function getUserId(req: Request): string {
-  const rawHeader = req.headers["x-user-id"];
-  const headerValue = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
-  const sanitized = String(headerValue || "")
-    .trim()
-    .replace(/[^a-zA-Z0-9_-]/g, "")
-    .slice(0, 150);
+  const header = req.header("X-User-ID")?.trim();
 
-  return sanitized || DEFAULT_USER_ID;
+  if (!header) {
+    return "user_default";
+  }
+
+  return header.slice(0, 200);
 }
 
 function getLatestRate(db: DatabaseSchema): number {
-  const latestRecord = db.exchange_rates[db.exchange_rates.length - 1];
-  const rate = Number(latestRecord?.rate_usd);
-
-  return Number.isFinite(rate) && rate > 0 ? rate : DEFAULT_RATE;
+  return (
+    db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || DEFAULT_RATE
+  );
 }
 
-function getOrCreateBudget(
-  db: DatabaseSchema,
-  userId: string
-): Budget {
-  let budget = db.budgets.find((entry) => entry.user_id === userId);
+function createBudget(db: DatabaseSchema, userId: string): Budget {
+  const budget: Budget = {
+    id: db.next_budget_id++,
+    user_id: userId,
+    monto_bs: 0,
+    tipo_tasa: "bcv",
+    tasa_custom: DEFAULT_RATE,
+    spent_bs: 0,
+    updated_at: new Date().toISOString(),
+  };
 
-  if (!budget) {
-    budget = {
-      id: db.next_budget_id++,
-      user_id: userId,
-      monto_bs: 0,
-      tipo_tasa: "bcv",
-      tasa_custom: DEFAULT_RATE,
-      spent_bs: 0,
-      updated_at: new Date().toISOString(),
-    };
-
-    db.budgets.push(budget);
-  }
-
+  db.budgets.push(budget);
   return budget;
 }
 
-function getActiveRate(
-  db: DatabaseSchema,
-  budget: Budget
-): number {
-  if (
-    budget.tipo_tasa === "custom" &&
-    Number.isFinite(budget.tasa_custom) &&
-    budget.tasa_custom > 0
-  ) {
-    return budget.tasa_custom;
-  }
-
-  return getLatestRate(db);
+function getOrCreateBudget(db: DatabaseSchema, userId: string): Budget {
+  return (
+    db.budgets.find((budget) => budget.user_id === userId) ||
+    createBudget(db, userId)
+  );
 }
 
-function getUserCart(
-  db: DatabaseSchema,
-  userId: string
-): CartItem[] {
+function getActiveRate(db: DatabaseSchema, budget: Budget): number {
+  return budget.tipo_tasa === "custom"
+    ? budget.tasa_custom
+    : getLatestRate(db);
+}
+
+function getUserCart(db: DatabaseSchema, userId: string): CartItem[] {
   return db.cart_items.filter((item) => item.user_id === userId);
 }
 
-function recalculateUserSpent(
+function recalculateSpentBs(
   db: DatabaseSchema,
-  userId: string
+  userId: string,
+  budget: Budget
 ): number {
-  const budget = getOrCreateBudget(db, userId);
   const activeRate = getActiveRate(db, budget);
-  const userCart = getUserCart(db, userId);
 
-  const spent = userCart.reduce((total, item) => {
-    const itemRate =
-      Number.isFinite(item.rate_used) && item.rate_used > 0
-        ? item.rate_used
-        : activeRate;
-
-    return total + item.price_usd * item.quantity * itemRate;
+  const totalBs = getUserCart(db, userId).reduce((acc, item) => {
+    const rate = item.rate_used || activeRate;
+    return acc + item.price_usd * item.quantity * rate;
   }, 0);
 
-  budget.spent_bs = roundMoney(spent);
-  budget.updated_at = new Date().toISOString();
+  const roundedSpent = Math.round(totalBs * 100) / 100;
+  budget.spent_bs = roundedSpent;
 
-  return budget.spent_bs;
+  return roundedSpent;
 }
 
-function serializeBudget(
-  db: DatabaseSchema,
-  budget: Budget
-) {
+function buildBudgetResponse(db: DatabaseSchema, budget: Budget) {
   const activeRate = getActiveRate(db, budget);
-  const safeRate = activeRate > 0 ? activeRate : DEFAULT_RATE;
-  const remainingBs = roundMoney(
-    Math.max(0, budget.monto_bs - budget.spent_bs)
+  const remainingBs = Math.max(
+    0,
+    Math.round((budget.monto_bs - budget.spent_bs) * 100) / 100
   );
 
   return {
     ...budget,
-    active_rate: safeRate,
+    active_rate: activeRate,
     remaining_bs: remainingBs,
-    budget_usd: roundMoney(budget.monto_bs / safeRate),
-    spent_usd: roundMoney(budget.spent_bs / safeRate),
-    remaining_usd: roundMoney(remainingBs / safeRate),
+    budget_usd: Math.round((budget.monto_bs / activeRate) * 100) / 100,
+    spent_usd: Math.round((budget.spent_bs / activeRate) * 100) / 100,
+    remaining_usd: Math.round((remainingBs / activeRate) * 100) / 100,
     percentage_remaining:
       budget.monto_bs > 0
         ? Math.max(
             0,
-            Math.min(
-              100,
-              Math.round((remainingBs / budget.monto_bs) * 100)
+            Math.round(
+              ((budget.monto_bs - budget.spent_bs) / budget.monto_bs) * 100
             )
           )
         : 0,
-  };
-}
-
-function buildCartSummary(
-  db: DatabaseSchema,
-  userId: string
-) {
-  const budget = getOrCreateBudget(db, userId);
-  const activeRate = getActiveRate(db, budget);
-  const items = getUserCart(db, userId);
-
-  const serializedItems = items.map((item) => {
-    const itemRate =
-      Number.isFinite(item.rate_used) && item.rate_used > 0
-        ? item.rate_used
-        : activeRate;
-
-    const subtotalUsd = roundMoney(
-      item.price_usd * item.quantity
-    );
-
-    const priceBs = roundMoney(item.price_usd * itemRate);
-    const subtotalBs = roundMoney(subtotalUsd * itemRate);
-
-    return {
-      ...item,
-      price_bs: priceBs,
-      subtotal_usd: subtotalUsd,
-      subtotal_bs: subtotalBs,
-    };
-  });
-
-  const totalItems = serializedItems.reduce(
-    (total, item) => total + item.quantity,
-    0
-  );
-
-  const totalUsd = roundMoney(
-    serializedItems.reduce(
-      (total, item) => total + item.subtotal_usd,
-      0
-    )
-  );
-
-  const totalBs = roundMoney(
-    serializedItems.reduce(
-      (total, item) => total + item.subtotal_bs,
-      0
-    )
-  );
-
-  budget.spent_bs = totalBs;
-
-  return {
-    items: serializedItems,
-    total_items: totalItems,
-    total_usd: totalUsd,
-    total_bs: totalBs,
-    active_rate: activeRate,
-    remaining_bs: roundMoney(
-      Math.max(0, budget.monto_bs - totalBs)
-    ),
   };
 }
 
@@ -467,35 +273,27 @@ async function scrapeBcvRate(): Promise<number | null> {
   const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
-    const response = await fetch(
-      "https://ve.dolarapi.com/v1/dolares/oficial",
-      {
-        signal: controller.signal,
-        headers: {
-          Accept: "application/json",
-        },
-      }
-    );
+    const res = await fetch("https://ve.dolarapi.com/v1/dolares/oficial", {
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+      },
+    });
 
-    if (!response.ok) {
-      throw new Error(
-        `DolarApi respondió con estado ${response.status}`
-      );
+    if (!res.ok) {
+      throw new Error(`DolarApi respondió con estado ${res.status}`);
     }
 
-    const data = (await response.json()) as {
-      promedio?: number;
-    };
-
+    const data = (await res.json()) as { promedio?: number };
     const rate = Number(data.promedio);
 
     if (!Number.isFinite(rate) || rate <= 0) {
       throw new Error("La API devolvió una tasa inválida");
     }
 
-    return roundMoney(rate);
+    return Math.round(rate * 100) / 100;
   } catch (error) {
-    console.error("Error consultando la tasa oficial:", error);
+    console.error("Error al consultar la tasa oficial:", error);
     return null;
   } finally {
     clearTimeout(timeout);
@@ -508,635 +306,424 @@ async function startServer() {
   app.use(
     cors({
       origin: true,
-      credentials: false,
-      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "X-User-ID"],
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     })
   );
+  app.use(express.json());
 
-  app.use(express.json({ limit: "1mb" }));
+  // --- PRESUPUESTO ---
+
+  app.get(["/app-api/budget", "/api/budget"], (req, res) => {
+    const db = readDb();
+    const userId = getUserId(req);
+    const budget = getOrCreateBudget(db, userId);
+
+    recalculateSpentBs(db, userId, budget);
+    writeDb(db);
+
+    res.json(buildBudgetResponse(db, budget));
+  });
+
+  app.post(["/app-api/budget", "/api/budget"], (req, res) => {
+    const db = readDb();
+    const userId = getUserId(req);
+    const budget = getOrCreateBudget(db, userId);
+    const { monto_bs, tipo_tasa, tasa_custom } = req.body;
+
+    if (monto_bs !== undefined) {
+      budget.monto_bs = Math.max(0, Number.parseFloat(monto_bs) || 0);
+    }
+
+    if (tipo_tasa === "bcv" || tipo_tasa === "custom") {
+      budget.tipo_tasa = tipo_tasa;
+    }
+
+    if (tasa_custom !== undefined) {
+      budget.tasa_custom =
+        Number.parseFloat(tasa_custom) || getLatestRate(db);
+    }
+
+    budget.updated_at = new Date().toISOString();
+
+    recalculateSpentBs(db, userId, budget);
+    writeDb(db);
+
+    res.json({
+      success: true,
+      budget: buildBudgetResponse(db, budget),
+    });
+  });
+
+  // --- CARRITO ---
+
+  app.get(["/app-api/cart", "/api/cart"], (req, res) => {
+    const db = readDb();
+    const userId = getUserId(req);
+    const budget = getOrCreateBudget(db, userId);
+    const activeRate = getActiveRate(db, budget);
+
+    const items = getUserCart(db, userId).map((item) => {
+      const rate = item.rate_used || activeRate;
+      const priceBs = Math.round(item.price_usd * rate * 100) / 100;
+      const subtotalUsd =
+        Math.round(item.price_usd * item.quantity * 100) / 100;
+      const subtotalBs =
+        Math.round(priceBs * item.quantity * 100) / 100;
+
+      return {
+        ...item,
+        price_bs: priceBs,
+        subtotal_usd: subtotalUsd,
+        subtotal_bs: subtotalBs,
+      };
+    });
+
+    const totalUsd =
+      Math.round(
+        items.reduce((sum, item) => sum + item.subtotal_usd, 0) * 100
+      ) / 100;
+    const totalBs =
+      Math.round(
+        items.reduce((sum, item) => sum + item.subtotal_bs, 0) * 100
+      ) / 100;
+
+    budget.spent_bs = totalBs;
+    writeDb(db);
+
+    res.json({
+      items,
+      total_items: items.reduce((sum, item) => sum + item.quantity, 0),
+      total_usd: totalUsd,
+      total_bs: totalBs,
+      active_rate: activeRate,
+      remaining_bs: Math.max(
+        0,
+        Math.round((budget.monto_bs - totalBs) * 100) / 100
+      ),
+    });
+  });
+
+  app.post(["/app-api/cart", "/api/cart"], (req, res) => {
+    const db = readDb();
+    const userId = getUserId(req);
+    const budget = getOrCreateBudget(db, userId);
+    const { name, price_usd, quantity } = req.body;
+    const activeRate = getActiveRate(db, budget);
+
+    const newItem: CartItem = {
+      id: db.next_cart_id++,
+      user_id: userId,
+      name: name?.trim() || "Producto sin nombre",
+      price_usd: Number.parseFloat(price_usd) || 0,
+      quantity: Math.max(1, Number.parseInt(quantity, 10) || 1),
+      rate_used: activeRate,
+      created_at: new Date().toISOString(),
+    };
+
+    db.cart_items.push(newItem);
+    recalculateSpentBs(db, userId, budget);
+    writeDb(db);
+
+    res.json({ success: true, item: newItem });
+  });
+
+  app.put(["/app-api/cart/:id", "/api/cart/:id"], (req, res) => {
+    const db = readDb();
+    const userId = getUserId(req);
+    const id = Number.parseInt(req.params.id, 10);
+    const quantity = Math.max(1, Number.parseInt(req.body.quantity, 10) || 1);
+
+    const item = db.cart_items.find(
+      (cartItem) => cartItem.id === id && cartItem.user_id === userId
+    );
+
+    if (!item) {
+      return res.status(404).json({ error: "Producto no encontrado" });
+    }
+
+    item.quantity = quantity;
+
+    const budget = getOrCreateBudget(db, userId);
+    recalculateSpentBs(db, userId, budget);
+    writeDb(db);
+
+    return res.json({ success: true, item });
+  });
+
+  app.delete(["/app-api/cart/:id", "/api/cart/:id"], (req, res) => {
+    const db = readDb();
+    const userId = getUserId(req);
+    const id = Number.parseInt(req.params.id, 10);
+    const originalLength = db.cart_items.length;
+
+    db.cart_items = db.cart_items.filter(
+      (item) => !(item.id === id && item.user_id === userId)
+    );
+
+    if (db.cart_items.length === originalLength) {
+      return res.status(404).json({ error: "Producto no encontrado" });
+    }
+
+    const budget = getOrCreateBudget(db, userId);
+    recalculateSpentBs(db, userId, budget);
+    writeDb(db);
+
+    return res.json({ success: true });
+  });
+
+  app.delete(["/app-api/cart", "/api/cart"], (req, res) => {
+    const db = readDb();
+    const userId = getUserId(req);
+
+    db.cart_items = db.cart_items.filter(
+      (item) => item.user_id !== userId
+    );
+
+    const budget = getOrCreateBudget(db, userId);
+    recalculateSpentBs(db, userId, budget);
+    writeDb(db);
+
+    res.json({ success: true });
+  });
+
+  app.post(["/app-api/cart/checkout", "/api/cart/checkout"], (req, res) => {
+    const db = readDb();
+    const userId = getUserId(req);
+    const budget = getOrCreateBudget(db, userId);
+    const activeRate = getActiveRate(db, budget);
+    const cartItems = getUserCart(db, userId);
+
+    if (cartItems.length === 0) {
+      return res.status(400).json({ error: "El carrito está vacío" });
+    }
+
+    const items = cartItems.map((item) => {
+      const rate = item.rate_used || activeRate;
+      const priceBs = Math.round(item.price_usd * rate * 100) / 100;
+      const subtotalUsd =
+        Math.round(item.price_usd * item.quantity * 100) / 100;
+      const subtotalBs =
+        Math.round(priceBs * item.quantity * 100) / 100;
+
+      return {
+        name: item.name,
+        price_usd: item.price_usd,
+        price_bs: priceBs,
+        quantity: item.quantity,
+        subtotal_usd: subtotalUsd,
+        subtotal_bs: subtotalBs,
+      };
+    });
+
+    const totalUsd =
+      Math.round(
+        items.reduce((sum, item) => sum + item.subtotal_usd, 0) * 100
+      ) / 100;
+    const totalBs =
+      Math.round(
+        items.reduce((sum, item) => sum + item.subtotal_bs, 0) * 100
+      ) / 100;
+    const remainingBs = Math.max(
+      0,
+      Math.round((budget.monto_bs - totalBs) * 100) / 100
+    );
+
+    const record: HistoryRecord = {
+      id: db.next_history_id++,
+      user_id: userId,
+      date: new Date().toISOString().split("T")[0],
+      total_bs: totalBs,
+      total_usd: totalUsd,
+      rate_used: activeRate,
+      budget_bs: budget.monto_bs,
+      remaining_bs: remainingBs,
+      items,
+      created_at: new Date().toISOString(),
+    };
+
+    db.shopping_history.push(record);
+    db.cart_items = db.cart_items.filter(
+      (item) => item.user_id !== userId
+    );
+    budget.spent_bs = 0;
+    writeDb(db);
+
+    return res.json({ success: true, record });
+  });
+
+  // --- HISTORIAL ---
+
+  app.get(["/app-api/history", "/api/history"], (req, res) => {
+    const db = readDb();
+    const userId = getUserId(req);
+
+    const history = db.shopping_history
+      .filter((record) => record.user_id === userId)
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() -
+          new Date(a.created_at).getTime()
+      );
+
+    res.json(history);
+  });
+
+  // --- PRECIOS COMUNITARIOS ---
 
   app.get(
-    ["/app-api/health", "/api/health"],
-    (_req: Request, res: Response) => {
+    ["/app-api/community-prices", "/api/community-prices"],
+    (req, res) => {
+      const db = readDb();
+      const product = String(req.query.product || "").toLowerCase();
+      const city = String(req.query.city || "").toLowerCase();
+      const state = String(req.query.state || "").toLowerCase();
+      const sort = String(req.query.sort || "newest");
+
+      let prices = [...db.community_prices];
+
+      if (product) {
+        prices = prices.filter((price) =>
+          price.product.toLowerCase().includes(product)
+        );
+      }
+
+      if (city) {
+        prices = prices.filter((price) =>
+          price.city.toLowerCase().includes(city)
+        );
+      }
+
+      if (state) {
+        prices = prices.filter((price) =>
+          price.state.toLowerCase().includes(state)
+        );
+      }
+
+      if (sort === "price_asc") {
+        prices.sort((a, b) => a.price_usd - b.price_usd);
+      } else if (sort === "price_desc") {
+        prices.sort((a, b) => b.price_usd - a.price_usd);
+      } else {
+        prices.sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() -
+            new Date(a.created_at).getTime()
+        );
+      }
+
+      res.json(prices);
+    }
+  );
+
+  app.post(
+    ["/app-api/community-prices", "/api/community-prices"],
+    (req, res) => {
+      const db = readDb();
+      const {
+        product,
+        price_usd,
+        supermarket,
+        city,
+        state,
+        user_name,
+      } = req.body;
+      const priceUsd = Number.parseFloat(price_usd) || 0;
+      const activeRate = getLatestRate(db);
+
+      const newPrice: CommunityPrice = {
+        id: db.next_community_id++,
+        product: product?.trim() || "Producto sin nombre",
+        price_usd: priceUsd,
+        price_bs: Math.round(priceUsd * activeRate * 100) / 100,
+        supermarket: supermarket?.trim() || "No especificado",
+        city: city?.trim() || "No especificada",
+        state: state?.trim() || "No especificado",
+        user_name: user_name?.trim() || "Anónimo",
+        created_at: new Date().toISOString(),
+      };
+
+      db.community_prices.push(newPrice);
+      writeDb(db);
+
+      res.json({ success: true, price: newPrice });
+    }
+  );
+
+  // --- TASA DE CAMBIO ---
+
+  app.get(
+    ["/app-api/exchange-rate-public", "/api/exchange-rate-public"],
+    (req, res) => {
+      const db = readDb();
+      const latestRateRecord =
+        db.exchange_rates[db.exchange_rates.length - 1] ||
+        createEmptyDatabase().exchange_rates[0];
+
       res.json({
-        success: true,
-        service: "Rinde+ API",
-        time: new Date().toISOString(),
+        rate: latestRateRecord.rate_usd,
+        date: latestRateRecord.rate_date,
+        source: latestRateRecord.source,
+        last_updated: latestRateRecord.created_at,
       });
     }
   );
 
-  // PRESUPUESTO
-
-  app.get(
-    ["/app-api/budget", "/api/budget"],
-    (req: Request, res: Response) => {
-      try {
-        const db = readDb();
-        const userId = getUserId(req);
-        const budget = getOrCreateBudget(db, userId);
-
-        recalculateUserSpent(db, userId);
-        writeDb(db);
-
-        res.json(serializeBudget(db, budget));
-      } catch (error) {
-        console.error("Error obteniendo presupuesto:", error);
-        res.status(500).json({
-          error: "No se pudo obtener el presupuesto.",
-        });
-      }
-    }
-  );
-
   app.post(
-    ["/app-api/budget", "/api/budget"],
-    (req: Request, res: Response) => {
-      try {
-        const db = readDb();
-        const userId = getUserId(req);
-        const budget = getOrCreateBudget(db, userId);
+    ["/app-api/exchange-rate/fetch", "/api/exchange-rate/fetch"],
+    async (req, res) => {
+      const db = readDb();
+      const scraped = await scrapeBcvRate();
 
-        const montoBs = nonNegativeNumber(req.body?.monto_bs);
-        const tasaCustom = positiveNumber(req.body?.tasa_custom);
-        const tipoTasa = req.body?.tipo_tasa;
-
-        if (montoBs === null) {
-          res.status(400).json({
-            error: "El presupuesto debe ser un número válido.",
-          });
-          return;
-        }
-
-        if (tipoTasa !== "bcv" && tipoTasa !== "custom") {
-          res.status(400).json({
-            error: "El tipo de tasa no es válido.",
-          });
-          return;
-        }
-
-        if (tipoTasa === "custom" && tasaCustom === null) {
-          res.status(400).json({
-            error: "La tasa personalizada debe ser mayor a cero.",
-          });
-          return;
-        }
-
-        budget.monto_bs = roundMoney(montoBs);
-        budget.tipo_tasa = tipoTasa;
-        budget.tasa_custom =
-          tasaCustom !== null ? roundMoney(tasaCustom) : DEFAULT_RATE;
-        budget.updated_at = new Date().toISOString();
-
-        recalculateUserSpent(db, userId);
-        writeDb(db);
-
-        res.json({
-          success: true,
-          budget: serializeBudget(db, budget),
-        });
-      } catch (error) {
-        console.error("Error guardando presupuesto:", error);
-        res.status(500).json({
-          error: "No se pudo guardar el presupuesto.",
-        });
-      }
-    }
-  );
-
-  // TASA DE CAMBIO
-
-  app.get(
-    [
-      "/app-api/exchange-rate-public",
-      "/api/exchange-rate-public",
-    ],
-    (_req: Request, res: Response) => {
-      try {
-        const db = readDb();
-
-        const latest =
-          db.exchange_rates[db.exchange_rates.length - 1] ||
-          createDefaultDb().exchange_rates[0];
-
-        res.json({
-          rate: latest.rate_usd,
-          date: latest.rate_date,
-          source: latest.source,
-          last_updated: latest.created_at,
-        });
-      } catch (error) {
-        console.error("Error obteniendo la tasa:", error);
-        res.status(500).json({
-          error: "No se pudo obtener la tasa de cambio.",
-        });
-      }
-    }
-  );
-
-  app.post(
-    [
-      "/app-api/exchange-rate/fetch",
-      "/api/exchange-rate/fetch",
-    ],
-    async (_req: Request, res: Response) => {
-      try {
-        const db = readDb();
-        const scrapedRate = await scrapeBcvRate();
-
-        if (scrapedRate !== null) {
-          db.exchange_rates.push({
-            id: db.next_exchange_rate_id++,
-            rate_usd: scrapedRate,
-            rate_date: new Date().toISOString().split("T")[0],
-            source: "DolarApi - Oficial",
-            created_at: new Date().toISOString(),
-          });
-
-          writeDb(db);
-        }
-
-        const latest =
-          db.exchange_rates[db.exchange_rates.length - 1] ||
-          createDefaultDb().exchange_rates[0];
-
-        res.json({
-          success: true,
-          scraped: scrapedRate !== null,
-          rate: latest.rate_usd,
-          date: latest.rate_date,
-          source: latest.source,
-          last_updated: latest.created_at,
-        });
-      } catch (error) {
-        console.error("Error actualizando la tasa:", error);
-        res.status(500).json({
-          error: "No se pudo actualizar la tasa de cambio.",
-        });
-      }
-    }
-  );
-
-  // CARRITO
-
-  app.get(
-    ["/app-api/cart", "/api/cart"],
-    (req: Request, res: Response) => {
-      try {
-        const db = readDb();
-        const userId = getUserId(req);
-        const summary = buildCartSummary(db, userId);
-
-        writeDb(db);
-        res.json(summary);
-      } catch (error) {
-        console.error("Error obteniendo carrito:", error);
-        res.status(500).json({
-          error: "No se pudo obtener el carrito.",
-        });
-      }
-    }
-  );
-
-  app.post(
-    ["/app-api/cart", "/api/cart"],
-    (req: Request, res: Response) => {
-      try {
-        const db = readDb();
-        const userId = getUserId(req);
-
-        const name = String(req.body?.name || "").trim();
-        const priceUsd = positiveNumber(req.body?.price_usd);
-        const quantity = positiveInteger(req.body?.quantity);
-
-        if (!name) {
-          res.status(400).json({
-            error: "El nombre del producto es obligatorio.",
-          });
-          return;
-        }
-
-        if (priceUsd === null) {
-          res.status(400).json({
-            error: "El precio debe ser mayor a cero.",
-          });
-          return;
-        }
-
-        if (quantity === null) {
-          res.status(400).json({
-            error: "La cantidad debe ser un número entero mayor a cero.",
-          });
-          return;
-        }
-
-        const budget = getOrCreateBudget(db, userId);
-        const activeRate = getActiveRate(db, budget);
-
-        const item: CartItem = {
-          id: db.next_cart_id++,
-          user_id: userId,
-          name: name.slice(0, 150),
-          price_usd: roundMoney(priceUsd),
-          quantity,
-          rate_used: activeRate,
+      if (scraped) {
+        const rateEntry: ExchangeRate = {
+          id:
+            Math.max(
+              0,
+              ...db.exchange_rates.map((record) => record.id || 0)
+            ) + 1,
+          rate_usd: scraped,
+          rate_date: new Date().toISOString().split("T")[0],
+          source: "DolarApi - Oficial",
           created_at: new Date().toISOString(),
         };
 
-        db.cart_items.push(item);
-        recalculateUserSpent(db, userId);
+        db.exchange_rates.push(rateEntry);
         writeDb(db);
-
-        res.status(201).json({
-          success: true,
-          item,
-          cart: buildCartSummary(db, userId),
-        });
-      } catch (error) {
-        console.error("Error agregando producto:", error);
-        res.status(500).json({
-          error: "No se pudo agregar el producto al carrito.",
-        });
       }
+
+      const latestRate =
+        db.exchange_rates[db.exchange_rates.length - 1] ||
+        createEmptyDatabase().exchange_rates[0];
+
+      res.json({
+        success: true,
+        scraped: Boolean(scraped),
+        rate: latestRate.rate_usd,
+        date: latestRate.rate_date,
+        source: latestRate.source,
+      });
     }
   );
-
-  app.put(
-    ["/app-api/cart/:id", "/api/cart/:id"],
-    (req: Request, res: Response) => {
-      try {
-        const db = readDb();
-        const userId = getUserId(req);
-        const itemId = positiveInteger(req.params.id);
-        const quantity = positiveInteger(req.body?.quantity);
-
-        if (itemId === null) {
-          res.status(400).json({
-            error: "El producto indicado no es válido.",
-          });
-          return;
-        }
-
-        if (quantity === null) {
-          res.status(400).json({
-            error: "La cantidad debe ser mayor a cero.",
-          });
-          return;
-        }
-
-        const item = db.cart_items.find(
-          (entry) =>
-            entry.id === itemId && entry.user_id === userId
-        );
-
-        if (!item) {
-          res.status(404).json({
-            error: "El producto no existe en tu carrito.",
-          });
-          return;
-        }
-
-        item.quantity = quantity;
-
-        recalculateUserSpent(db, userId);
-        writeDb(db);
-
-        res.json({
-          success: true,
-          item,
-          cart: buildCartSummary(db, userId),
-        });
-      } catch (error) {
-        console.error("Error actualizando producto:", error);
-        res.status(500).json({
-          error: "No se pudo actualizar el producto.",
-        });
-      }
-    }
-  );
-
-  app.delete(
-    ["/app-api/cart/:id", "/api/cart/:id"],
-    (req: Request, res: Response) => {
-      try {
-        const db = readDb();
-        const userId = getUserId(req);
-        const itemId = positiveInteger(req.params.id);
-
-        if (itemId === null) {
-          res.status(400).json({
-            error: "El producto indicado no es válido.",
-          });
-          return;
-        }
-
-        const itemIndex = db.cart_items.findIndex(
-          (entry) =>
-            entry.id === itemId && entry.user_id === userId
-        );
-
-        if (itemIndex === -1) {
-          res.status(404).json({
-            error: "El producto no existe en tu carrito.",
-          });
-          return;
-        }
-
-        db.cart_items.splice(itemIndex, 1);
-
-        recalculateUserSpent(db, userId);
-        writeDb(db);
-
-        res.json({
-          success: true,
-          cart: buildCartSummary(db, userId),
-        });
-      } catch (error) {
-        console.error("Error eliminando producto:", error);
-        res.status(500).json({
-          error: "No se pudo eliminar el producto.",
-        });
-      }
-    }
-  );
-
-  // CHECKOUT
-
-  app.post(
-    ["/app-api/cart/checkout", "/api/cart/checkout"],
-    (req: Request, res: Response) => {
-      try {
-        const db = readDb();
-        const userId = getUserId(req);
-        const budget = getOrCreateBudget(db, userId);
-        const cart = buildCartSummary(db, userId);
-
-        if (cart.items.length === 0) {
-          res.status(400).json({
-            error: "El carrito está vacío.",
-          });
-          return;
-        }
-
-        if (budget.monto_bs > 0 && cart.total_bs > budget.monto_bs) {
-          res.status(400).json({
-            error: "El total del carrito supera tu presupuesto.",
-          });
-          return;
-        }
-
-        const now = new Date();
-        const record: HistoryRecord = {
-          id: db.next_history_id++,
-          user_id: userId,
-          date: now.toISOString().split("T")[0],
-          total_bs: cart.total_bs,
-          total_usd: cart.total_usd,
-          rate_used: cart.active_rate,
-          budget_bs: budget.monto_bs,
-          remaining_bs: roundMoney(
-            Math.max(0, budget.monto_bs - cart.total_bs)
-          ),
-          items: cart.items.map((item) => ({
-            name: item.name,
-            price_usd: item.price_usd,
-            price_bs: item.price_bs,
-            quantity: item.quantity,
-            subtotal_usd: item.subtotal_usd,
-            subtotal_bs: item.subtotal_bs,
-          })),
-          created_at: now.toISOString(),
-        };
-
-        db.shopping_history.unshift(record);
-        db.cart_items = db.cart_items.filter(
-          (item) => item.user_id !== userId
-        );
-
-        budget.spent_bs = 0;
-        budget.updated_at = now.toISOString();
-
-        writeDb(db);
-
-        res.json({
-          success: true,
-          record,
-        });
-      } catch (error) {
-        console.error("Error procesando checkout:", error);
-        res.status(500).json({
-          error: "No se pudo completar la compra.",
-        });
-      }
-    }
-  );
-
-  // HISTORIAL
-
-  app.get(
-    ["/app-api/history", "/api/history"],
-    (req: Request, res: Response) => {
-      try {
-        const db = readDb();
-        const userId = getUserId(req);
-
-        const history = db.shopping_history
-          .filter((record) => record.user_id === userId)
-          .sort((a, b) =>
-            b.created_at.localeCompare(a.created_at)
-          );
-
-        res.json(history);
-      } catch (error) {
-        console.error("Error obteniendo historial:", error);
-        res.status(500).json({
-          error: "No se pudo obtener el historial.",
-        });
-      }
-    }
-  );
-
-  // PRECIOS DE LA COMUNIDAD
-
-  app.get(
-    [
-      "/app-api/community-prices",
-      "/api/community-prices",
-    ],
-    (req: Request, res: Response) => {
-      try {
-        const db = readDb();
-
-        const product = String(req.query.product || "")
-          .trim()
-          .toLowerCase();
-
-        const city = String(req.query.city || "")
-          .trim()
-          .toLowerCase();
-
-        const state = String(req.query.state || "")
-          .trim()
-          .toLowerCase();
-
-        const sort = String(req.query.sort || "recent");
-
-        let prices = [...db.community_prices];
-
-        if (product) {
-          prices = prices.filter((entry) =>
-            entry.product.toLowerCase().includes(product)
-          );
-        }
-
-        if (city) {
-          prices = prices.filter((entry) =>
-            entry.city.toLowerCase().includes(city)
-          );
-        }
-
-        if (state) {
-          prices = prices.filter((entry) =>
-            entry.state.toLowerCase().includes(state)
-          );
-        }
-
-        if (sort === "price_asc" || sort === "lowest") {
-          prices.sort((a, b) => a.price_usd - b.price_usd);
-        } else if (
-          sort === "price_desc" ||
-          sort === "highest"
-        ) {
-          prices.sort((a, b) => b.price_usd - a.price_usd);
-        } else {
-          prices.sort((a, b) =>
-            b.created_at.localeCompare(a.created_at)
-          );
-        }
-
-        res.json(prices);
-      } catch (error) {
-        console.error("Error obteniendo precios:", error);
-        res.status(500).json({
-          error: "No se pudieron obtener los precios.",
-        });
-      }
-    }
-  );
-
-  app.post(
-    [
-      "/app-api/community-prices",
-      "/api/community-prices",
-    ],
-    (req: Request, res: Response) => {
-      try {
-        const db = readDb();
-        const userId = getUserId(req);
-
-        const product = String(req.body?.product || "").trim();
-        const supermarket = String(
-          req.body?.supermarket || ""
-        ).trim();
-        const city = String(req.body?.city || "").trim();
-        const state = String(req.body?.state || "").trim();
-        const userName =
-          String(req.body?.user_name || "").trim() ||
-          "Usuario Rinde+";
-
-        const priceUsd = positiveNumber(req.body?.price_usd);
-
-        if (
-          !product ||
-          !supermarket ||
-          !city ||
-          !state ||
-          priceUsd === null
-        ) {
-          res.status(400).json({
-            error:
-              "Completa el producto, precio, supermercado, ciudad y estado.",
-          });
-          return;
-        }
-
-        const budget = getOrCreateBudget(db, userId);
-        const rate = getActiveRate(db, budget);
-
-        const communityPrice: CommunityPrice = {
-          id: db.next_community_id++,
-          user_id: userId,
-          product: product.slice(0, 150),
-          price_usd: roundMoney(priceUsd),
-          price_bs: roundMoney(priceUsd * rate),
-          supermarket: supermarket.slice(0, 150),
-          city: city.slice(0, 100),
-          state: state.slice(0, 100),
-          user_name: userName.slice(0, 100),
-          rate_used: rate,
-          created_at: new Date().toISOString(),
-        };
-
-        db.community_prices.unshift(communityPrice);
-        writeDb(db);
-
-        res.status(201).json({
-          success: true,
-          price: communityPrice,
-        });
-      } catch (error) {
-        console.error("Error publicando precio:", error);
-        res.status(500).json({
-          error: "No se pudo publicar el precio.",
-        });
-      }
-    }
-  );
-
-  // FRONTEND
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-      },
+      server: { middlewareMode: true },
       appType: "custom",
     });
 
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(path.join(process.cwd(), "dist")));
 
-    app.use(express.static(distPath));
-
-    app.get("*", (_req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(process.cwd(), "dist", "index.html"));
     });
   }
 
-  app.use(
-    (
-      error: unknown,
-      _req: Request,
-      res: Response,
-      _next: express.NextFunction
-    ) => {
-      console.error("Error no controlado:", error);
-
-      res.status(500).json({
-        error: "Ocurrió un error interno en el servidor.",
-      });
-    }
-  );
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Servidor Rinde+ corriendo en el puerto ${PORT}`);
-    console.log(`Base de datos: ${DB_FILE}`);
+  app.listen(PORT, () => {
+    console.log(`Servidor corriendo en el puerto ${PORT}`);
   });
 }
 
-startServer().catch((error) => {
-  console.error("No se pudo iniciar el servidor:", error);
-  process.exit(1);
-});
+startServer();
