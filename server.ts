@@ -1,371 +1,314 @@
-import cors from "cors";
-import express from "express";
-import path from "path";
-import fs from "fs";
-import { createServer as createViteServer } from "vite";
+import {
+  Budget,
+  CartSummary,
+  HistoryRecord,
+  CommunityPrice,
+  ExchangeRateInfo,
+  RateType,
+} from "../types";
 
-const PORT = process.env.PORT || 3000;
-const DB_FILE = path.join(process.cwd(), "db_rinde.json");
+const BASE_URL =
+  import.meta.env.VITE_API_URL || "https://rinde-plus.onrender.com";
 
-// Define schema types
-interface Budget {
-  id: number;
-  user_id: string;
-  monto_bs: number;
-  tipo_tasa: "bcv" | "custom";
-  tasa_custom: number;
-  spent_bs: number;
-  updated_at: string;
+const API_BASE = `${BASE_URL.replace(/\/$/, "")}/app-api`;
+
+const USER_ID_STORAGE_KEY = "rinde_plus_user_id";
+
+function createUserId(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return `rinde_user_${crypto.randomUUID()}`;
+  }
+
+  return `rinde_user_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2, 12)}`;
 }
 
-interface CartItem {
-  id: number;
-  user_id: string;
-  name: string;
-  price_usd: number;
-  quantity: number;
-  rate_used: number;
-  created_at: string;
+function getUserId(): string {
+  const existingUserId = localStorage.getItem(USER_ID_STORAGE_KEY);
+
+  if (existingUserId) {
+    return existingUserId;
+  }
+
+  const newUserId = createUserId();
+  localStorage.setItem(USER_ID_STORAGE_KEY, newUserId);
+
+  return newUserId;
 }
 
-interface HistoryRecord {
-  id: number;
-  user_id: string;
-  date: string;
-  total_bs: number;
-  total_usd: number;
-  rate_used: number;
-  budget_bs: number;
-  remaining_bs: number;
-  items: Array<{
-    name: string;
-    price_usd: number;
-    price_bs: number;
-    quantity: number;
-    subtotal_usd: number;
-    subtotal_bs: number;
-  }>;
-  created_at: string;
+function getUserHeaders(
+  includeJsonContentType = false
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "X-User-ID": getUserId(),
+  };
+
+  if (includeJsonContentType) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return headers;
 }
 
-interface CommunityPrice {
-  id: number;
-  product: string;
-  price_usd: number;
-  price_bs: number;
-  supermarket: string;
-  city: string;
-  state: string;
-  user_name: string;
-  created_at: string;
-}
+export const apiService = {
+  // Fetch budget
+  async getBudget(): Promise<Budget> {
+    try {
+      const res = await fetch(`${API_BASE}/budget`, {
+        headers: getUserHeaders(),
+      });
 
-interface ExchangeRate {
-  id: number;
-  rate_usd: number;
-  rate_date: string;
-  source: string;
-  created_at: string;
-}
+      if (!res.ok) {
+        throw new Error("Error fetching budget");
+      }
 
-interface DatabaseSchema {
-  budget: Budget;
-  cart_items: CartItem[];
-  shopping_history: HistoryRecord[];
-  community_prices: CommunityPrice[];
-  exchange_rates: ExchangeRate[];
-  next_cart_id: number;
-  next_history_id: number;
-  next_community_id: number;
-}
+      return await res.json();
+    } catch (e) {
+      console.warn("API fallback for budget:", e);
 
-const defaultDb: DatabaseSchema = {
-  budget: {
-    id: 1,
-    user_id: "user_default",
-    monto_bs: 0.0,
-    tipo_tasa: "bcv",
-    tasa_custom: 742.23,
-    spent_bs: 0.0,
-    updated_at: new Date().toISOString(),
-  },
-  cart_items: [],
-  shopping_history: [],
-  community_prices: [],
-  exchange_rates: [
-    {
-      id: 1,
-      rate_usd: 742.23,
-      rate_date: new Date().toISOString().split("T")[0],
-      source: "Banco Central de Venezuela (BCV)",
-      created_at: new Date().toISOString(),
-    },
-  ],
-  next_cart_id: 1,
-  next_history_id: 1,
-  next_community_id: 1,
-};
-
-function readDb(): DatabaseSchema {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const data = fs.readFileSync(DB_FILE, "utf-8");
-      return JSON.parse(data);
+      return {
+        monto_bs: 0,
+        tipo_tasa: "bcv",
+        tasa_custom: 742.23,
+        spent_bs: 0,
+        active_rate: 742.23,
+        remaining_bs: 0,
+        budget_usd: 0,
+        spent_usd: 0,
+        remaining_usd: 0,
+        percentage_remaining: 0,
+      };
     }
-  } catch (err) {
-    console.error("Error reading database file, using fallback:", err);
-  }
-  return defaultDb;
-}
+  },
 
-function writeDb(db: DatabaseSchema) {
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
-  } catch (err) {
-    console.error("Error writing database file:", err);
-  }
-}
-
-async function scrapeBcvRate(): Promise<number | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-
-  try {
-    const res = await fetch("https://ve.dolarapi.com/v1/dolares/oficial", {
-      signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-      },
+  // Save/update budget
+  async saveBudget(
+    monto_bs: number,
+    tipo_tasa: RateType,
+    tasa_custom: number
+  ): Promise<Budget> {
+    const res = await fetch(`${API_BASE}/budget`, {
+      method: "POST",
+      headers: getUserHeaders(true),
+      body: JSON.stringify({
+        monto_bs,
+        tipo_tasa,
+        tasa_custom,
+      }),
     });
 
     if (!res.ok) {
-      throw new Error(`DolarApi respondió con estado ${res.status}`);
-    }
-    const data = (await res.json()) as { promedio?: number };
-    const rate = Number(data.promedio);
-
-    if (!Number.isFinite(rate) || rate <= 0) {
-      throw new Error("La API devolvió una tasa inválida");
+      throw new Error("Error saving budget");
     }
 
-    return Math.round(rate * 100) / 100;
-  } catch (e) {
-    console.error("Error al consultar la tasa oficial:", e);
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+    const data = await res.json();
+    return data.budget;
+  },
 
-async function startServer() {
-  const app = express();
-  app.use(cors());
-  app.use(express.json());
+  // Fetch exchange rate info
+  async getExchangeRate(): Promise<ExchangeRateInfo> {
+    try {
+      const res = await fetch(`${API_BASE}/exchange-rate-public`);
 
-  const recalculateSpentBs = (db: DatabaseSchema): number => {
-    const activeRate =
-      db.budget.tipo_tasa === "custom"
-        ? db.budget.tasa_custom
-        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 742.23;
+      if (!res.ok) {
+        throw new Error("Error fetching exchange rate");
+      }
 
-    const totalBs = db.cart_items.reduce((acc, item) => {
-      const rate = item.rate_used || activeRate;
-      return acc + item.price_usd * item.quantity * rate;
-    }, 0);
-
-    const roundedSpent = Math.round(totalBs * 100) / 100;
-    db.budget.spent_bs = roundedSpent;
-    return roundedSpent;
-  };
-
-  // --- ENDPOINTS BUDGET ---
-  app.get(["/app-api/budget", "/api/budget"], (req, res) => {
-    const db = readDb();
-    const activeRate =
-      db.budget.tipo_tasa === "custom"
-        ? db.budget.tasa_custom
-        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 742.23;
-
-    recalculateSpentBs(db);
-    writeDb(db);
-
-    res.json({
-      ...db.budget,
-      active_rate: activeRate,
-      remaining_bs: Math.max(0, Math.round((db.budget.monto_bs - db.budget.spent_bs) * 100) / 100),
-      budget_usd: Math.round((db.budget.monto_bs / activeRate) * 100) / 100,
-      spent_usd: Math.round((db.budget.spent_bs / activeRate) * 100) / 100,
-      remaining_usd: Math.max(0, Math.round(((db.budget.monto_bs - db.budget.spent_bs) / activeRate) * 100) / 100),
-      percentage_remaining:
-        db.budget.monto_bs > 0
-          ? Math.max(0, Math.round(((db.budget.monto_bs - db.budget.spent_bs) / db.budget.monto_bs) * 100))
-          : 0,
-    });
-  });
-
-  app.post(["/app-api/budget", "/api/budget"], (req, res) => {
-    const db = readDb();
-    const { monto_bs, tipo_tasa, tasa_custom } = req.body;
-
-    if (monto_bs !== undefined) db.budget.monto_bs = parseFloat(monto_bs) || 0;
-    if (tipo_tasa === "bcv" || tipo_tasa === "custom") db.budget.tipo_tasa = tipo_tasa;
-    if (tasa_custom !== undefined) db.budget.tasa_custom = parseFloat(tasa_custom) || 742.23;
-
-    db.budget.updated_at = new Date().toISOString();
-    recalculateSpentBs(db);
-    writeDb(db);
-
-    const activeRate =
-      db.budget.tipo_tasa === "custom"
-        ? db.budget.tasa_custom
-        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 742.23;
-
-    res.json({
-      success: true,
-      budget: {
-        ...db.budget,
-        active_rate: activeRate,
-        remaining_bs: Math.max(0, Math.round((db.budget.monto_bs - db.budget.spent_bs) * 100) / 100),
-        budget_usd: Math.round((db.budget.monto_bs / activeRate) * 100) / 100,
-        spent_usd: Math.round((db.budget.spent_bs / activeRate) * 100) / 100,
-      },
-    });
-  });
-
-  // --- ENDPOINTS CART (CARRITO) ---
-  app.get(["/app-api/cart", "/api/cart"], (req, res) => {
-    const db = readDb();
-    const activeRate =
-      db.budget.tipo_tasa === "custom"
-        ? db.budget.tasa_custom
-        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 742.23;
-
-    const items = db.cart_items.map((item) => {
-      const rate = item.rate_used || activeRate;
-      const price_bs = Math.round(item.price_usd * rate * 100) / 100;
-      const subtotal_usd = Math.round(item.price_usd * item.quantity * 100) / 100;
-      const subtotal_bs = Math.round(price_bs * item.quantity * 100) / 100;
-
+      return await res.json();
+    } catch (e) {
       return {
-        ...item,
-        price_bs,
-        subtotal_usd,
-        subtotal_bs,
+        rate: 742.23,
+        date: new Date().toISOString().split("T")[0],
+        source: "Banco Central de Venezuela (BCV)",
       };
+    }
+  },
+
+  // Force BCV refresh
+  async refreshExchangeRate(): Promise<ExchangeRateInfo> {
+    const res = await fetch(`${API_BASE}/exchange-rate/fetch`, {
+      method: "POST",
     });
 
-    res.json(items);
-  });
-
-  app.post(["/app-api/cart", "/api/cart"], (req, res) => {
-    const db = readDb();
-    const { name, price_usd, quantity } = req.body;
-
-    const activeRate =
-      db.budget.tipo_tasa === "custom"
-        ? db.budget.tasa_custom
-        : db.exchange_rates[db.exchange_rates.length - 1]?.rate_usd || 742.23;
-
-    const newItem: CartItem = {
-      id: db.next_cart_id++,
-      user_id: "user_default",
-      name: name || "Producto sin nombre",
-      price_usd: parseFloat(price_usd) || 0,
-      quantity: parseInt(quantity) || 1,
-      rate_used: activeRate,
-      created_at: new Date().toISOString(),
-    };
-
-    db.cart_items.push(newItem);
-    recalculateSpentBs(db);
-    writeDb(db);
-
-    res.json({ success: true, item: newItem });
-  });
-
-  app.delete(["/app-api/cart/:id", "/api/cart/:id"], (req, res) => {
-    const db = readDb();
-    const id = parseInt(req.params.id);
-    db.cart_items = db.cart_items.filter((item) => item.id !== id);
-    recalculateSpentBs(db);
-    writeDb(db);
-    res.json({ success: true });
-  });
-
-  app.delete(["/app-api/cart", "/api/cart"], (req, res) => {
-    const db = readDb();
-    db.cart_items = [];
-    recalculateSpentBs(db);
-    writeDb(db);
-    res.json({ success: true });
-  });
-
-  // --- ENDPOINTS EXCHANGE RATE ---
-  app.get(["/app-api/exchange-rate-public", "/api/exchange-rate-public"], (req, res) => {
-    const db = readDb();
-    const latestRateRecord: ExchangeRate = db.exchange_rates[db.exchange_rates.length - 1] || {
-      id: 1,
-      rate_usd: 742.23,
-      rate_date: new Date().toISOString().split("T")[0],
-      source: "Banco Central de Venezuela (BCV)",
-      created_at: new Date().toISOString(),
-    };
-
-    res.json({
-      rate: latestRateRecord.rate_usd,
-      date: latestRateRecord.rate_date,
-      source: latestRateRecord.source,
-      last_updated: latestRateRecord.created_at,
-    });
-  });
-
-  app.post(["/app-api/exchange-rate/fetch", "/api/exchange-rate/fetch"], async (req, res) => {
-    const db = readDb();
-    const scraped = await scrapeBcvRate();
-
-    if (scraped) {
-      const rateEntry: ExchangeRate = {
-        id: db.exchange_rates.length + 1,
-        rate_usd: scraped,
-        rate_date: new Date().toISOString().split("T")[0],
-        source: "DolarApi - Oficial",
-        created_at: new Date().toISOString(),
-      };
-      db.exchange_rates.push(rateEntry);
-      writeDb(db);
+    if (!res.ok) {
+      throw new Error("Error refreshing rate");
     }
 
-    const latestRate = db.exchange_rates[db.exchange_rates.length - 1] || {
-      rate_usd: 742.23,
-      rate_date: new Date().toISOString().split("T")[0],
-      source: "Banco Central de Venezuela (BCV)",
-    };
+    return await res.json();
+  },
 
-    res.json({
-      success: true,
-      scraped: !!scraped,
-      rate: latestRate.rate_usd,
-      date: latestRate.rate_date,
-      source: latestRate.source,
+  // Fetch cart
+  async getCart(): Promise<CartSummary> {
+    try {
+      const res = await fetch(`${API_BASE}/cart`, {
+        headers: getUserHeaders(),
+      });
+
+      if (!res.ok) {
+        throw new Error("Error fetching cart");
+      }
+
+      return await res.json();
+    } catch (e) {
+      return {
+        items: [],
+        total_items: 0,
+        total_usd: 0,
+        total_bs: 0,
+        active_rate: 742.23,
+        remaining_bs: 0,
+      };
+    }
+  },
+
+  // Add item to cart
+  async addToCart(
+    name: string,
+    price_usd: number,
+    quantity: number
+  ): Promise<void> {
+    const res = await fetch(`${API_BASE}/cart`, {
+      method: "POST",
+      headers: getUserHeaders(true),
+      body: JSON.stringify({
+        name,
+        price_usd,
+        quantity,
+      }),
     });
-  });
 
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "custom",
+    if (!res.ok) {
+      throw new Error("Error adding item to cart");
+    }
+  },
+
+  // Update item quantity
+  async updateCartQuantity(
+    id: number,
+    quantity: number
+  ): Promise<void> {
+    const res = await fetch(`${API_BASE}/cart/${id}`, {
+      method: "PUT",
+      headers: getUserHeaders(true),
+      body: JSON.stringify({ quantity }),
     });
-    app.use(vite.middlewares);
-  } else {
-    app.use(express.static(path.join(process.cwd(), "dist")));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(process.cwd(), "dist", "index.html"));
+
+    if (!res.ok) {
+      throw new Error("Error updating item quantity");
+    }
+  },
+
+  // Delete item from cart
+  async deleteCartItem(id: number): Promise<void> {
+    const res = await fetch(`${API_BASE}/cart/${id}`, {
+      method: "DELETE",
+      headers: getUserHeaders(),
     });
-  }
 
-  app.listen(PORT, () => {
-    console.log(`Servidor corriendo en el puerto ${PORT}`);
-  });
-}
+    if (!res.ok) {
+      throw new Error("Error deleting cart item");
+    }
+  },
 
-startServer();
+  // Checkout
+  async checkout(): Promise<{
+    success: boolean;
+    record: HistoryRecord;
+  }> {
+    const res = await fetch(`${API_BASE}/cart/checkout`, {
+      method: "POST",
+      headers: getUserHeaders(),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Error al procesar checkout");
+    }
+
+    return await res.json();
+  },
+
+  // Get shopping history
+  async getHistory(): Promise<HistoryRecord[]> {
+    try {
+      const res = await fetch(`${API_BASE}/history`, {
+        headers: getUserHeaders(),
+      });
+
+      if (!res.ok) {
+        throw new Error("Error fetching history");
+      }
+
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  // Get community prices with filters
+  async getCommunityPrices(filters?: {
+    product?: string;
+    city?: string;
+    state?: string;
+    sort?: string;
+  }): Promise<CommunityPrice[]> {
+    try {
+      const params = new URLSearchParams();
+
+      if (filters?.product) {
+        params.set("product", filters.product);
+      }
+
+      if (filters?.city) {
+        params.set("city", filters.city);
+      }
+
+      if (filters?.state) {
+        params.set("state", filters.state);
+      }
+
+      if (filters?.sort) {
+        params.set("sort", filters.sort);
+      }
+
+      const res = await fetch(
+        `${API_BASE}/community-prices?${params.toString()}`,
+        {
+          headers: getUserHeaders(),
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error("Error fetching community prices");
+      }
+
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  // Share a price to community
+  async sharePrice(payload: {
+    product: string;
+    price_usd: number;
+    supermarket: string;
+    city: string;
+    state: string;
+    user_name?: string;
+  }): Promise<void> {
+    const res = await fetch(`${API_BASE}/community-prices`, {
+      method: "POST",
+      headers: getUserHeaders(true),
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      throw new Error("Error publicando precio");
+    }
+  },
+};
