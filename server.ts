@@ -60,6 +60,22 @@ interface CommunityPrice {
   created_at: string;
 }
 
+interface CommunityPriceGroup {
+  product: string;
+  city: string;
+  state: string;
+  lowest_price_usd: number;
+  highest_price_usd: number;
+  average_price_usd: number;
+  lowest_price_bs: number;
+  highest_price_bs: number;
+  average_price_bs: number;
+  reports: number;
+  supermarkets: number;
+  latest_report_at: string;
+  offers: Array<CommunityPrice & { is_lowest: boolean }>;
+}
+
 interface ExchangeRate {
   id: number;
   rate_usd: number;
@@ -266,6 +282,88 @@ function buildBudgetResponse(db: DatabaseSchema, budget: Budget) {
           )
         : 0,
   };
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function normalizeProductKey(product: string): string {
+  return product
+    .trim()
+    .toLocaleLowerCase("es-VE")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function groupCommunityPrices(prices: CommunityPrice[]): CommunityPriceGroup[] {
+  const grouped = new Map<string, CommunityPrice[]>();
+
+  for (const price of prices) {
+    const productKey = normalizeProductKey(price.product) || `product-${price.id}`;
+    const cityKey = normalizeProductKey(price.city) || "city-unknown";
+    const stateKey = normalizeProductKey(price.state) || "state-unknown";
+    const key = `${productKey}|${cityKey}|${stateKey}`;
+    const current = grouped.get(key) || [];
+    current.push(price);
+    grouped.set(key, current);
+  }
+
+  return Array.from(grouped.values()).map((group) => {
+    const offersByPrice = [...group].sort((a, b) => {
+      if (a.price_usd !== b.price_usd) {
+        return a.price_usd - b.price_usd;
+      }
+
+      return (
+        new Date(b.created_at).getTime() -
+        new Date(a.created_at).getTime()
+      );
+    });
+
+    const lowestPriceUsd = offersByPrice[0]?.price_usd || 0;
+    const usdTotal = group.reduce((sum, price) => sum + price.price_usd, 0);
+    const bsTotal = group.reduce((sum, price) => sum + price.price_bs, 0);
+    const latestReportAt = group.reduce(
+      (latest, price) =>
+        new Date(price.created_at).getTime() > new Date(latest).getTime()
+          ? price.created_at
+          : latest,
+      group[0].created_at
+    );
+
+    return {
+      product: group[0].product,
+      city: group[0].city,
+      state: group[0].state,
+      lowest_price_usd: roundMoney(
+        Math.min(...group.map((price) => price.price_usd))
+      ),
+      highest_price_usd: roundMoney(
+        Math.max(...group.map((price) => price.price_usd))
+      ),
+      average_price_usd: roundMoney(usdTotal / group.length),
+      lowest_price_bs: roundMoney(
+        Math.min(...group.map((price) => price.price_bs))
+      ),
+      highest_price_bs: roundMoney(
+        Math.max(...group.map((price) => price.price_bs))
+      ),
+      average_price_bs: roundMoney(bsTotal / group.length),
+      reports: group.length,
+      supermarkets: new Set(
+        group.map((price) => price.supermarket.trim().toLocaleLowerCase("es-VE"))
+      ).size,
+      latest_report_at: latestReportAt,
+      offers: offersByPrice.map((offer) => ({
+        ...offer,
+        is_lowest: offer.price_usd === lowestPriceUsd,
+      })),
+    };
+  });
 }
 
 async function scrapeBcvRate(): Promise<number | null> {
@@ -591,19 +689,19 @@ async function startServer() {
 
       if (product) {
         prices = prices.filter((price) =>
-          price.product.toLowerCase().includes(product)
+          normalizeProductKey(price.product).includes(product)
         );
       }
 
       if (city) {
         prices = prices.filter((price) =>
-          price.city.toLowerCase().includes(city)
+          normalizeProductKey(price.city).includes(city)
         );
       }
 
       if (state) {
         prices = prices.filter((price) =>
-          price.state.toLowerCase().includes(state)
+          normalizeProductKey(price.state).includes(state)
         );
       }
 
@@ -620,6 +718,56 @@ async function startServer() {
       }
 
       res.json(prices);
+    }
+  );
+
+  app.get(
+    [
+      "/app-api/community-prices/grouped",
+      "/api/community-prices/grouped",
+    ],
+    (req, res) => {
+      const db = readDb();
+      const product = normalizeProductKey(String(req.query.product || ""));
+      const city = normalizeProductKey(String(req.query.city || ""));
+      const state = normalizeProductKey(String(req.query.state || ""));
+      const sort = String(req.query.sort || "recent");
+
+      let prices = [...db.community_prices];
+
+      if (product) {
+        prices = prices.filter((price) =>
+          normalizeProductKey(price.product).includes(product)
+        );
+      }
+
+      if (city) {
+        prices = prices.filter((price) =>
+          normalizeProductKey(price.city).includes(city)
+        );
+      }
+
+      if (state) {
+        prices = prices.filter((price) =>
+          normalizeProductKey(price.state).includes(state)
+        );
+      }
+
+      const groups = groupCommunityPrices(prices);
+
+      if (sort === "price_asc") {
+        groups.sort((a, b) => a.lowest_price_usd - b.lowest_price_usd);
+      } else if (sort === "price_desc") {
+        groups.sort((a, b) => b.lowest_price_usd - a.lowest_price_usd);
+      } else {
+        groups.sort(
+          (a, b) =>
+            new Date(b.latest_report_at).getTime() -
+            new Date(a.latest_report_at).getTime()
+        );
+      }
+
+      res.json(groups);
     }
   );
 
