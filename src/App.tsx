@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { ScreenName, Budget, CartSummary, HistoryRecord, ExchangeRateInfo, RateType } from "./types";
+import {
+  ScreenName,
+  Budget,
+  CartSummary,
+  HistoryRecord,
+  ExchangeRateInfo,
+  RateType,
+} from "./types";
 import { apiService } from "./services/api";
 import { Header } from "./components/Header";
 import { Navigation } from "./components/Navigation";
@@ -12,7 +19,8 @@ import { CommunityScreen } from "./screens/CommunityScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<ScreenName>("dashboard");
+  const [currentScreen, setCurrentScreen] =
+    useState<ScreenName>("dashboard");
   const [budget, setBudget] = useState<Budget | null>(null);
   const [cartSummary, setCartSummary] = useState<CartSummary | null>(null);
   const [rateInfo, setRateInfo] = useState<ExchangeRateInfo | null>(null);
@@ -21,7 +29,8 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return localStorage.getItem("rinde_theme") === "dark";
   });
-  const [isRefreshingRate, setIsRefreshingRate] = useState<boolean>(false);
+  const [isRefreshingRate, setIsRefreshingRate] =
+    useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Apply dark mode class to root html element
@@ -44,6 +53,7 @@ export default function App() {
         apiService.getExchangeRate(),
         apiService.getHistory(),
       ]);
+
       setBudget(bData);
       setCartSummary(cData);
       setRateInfo(rData);
@@ -55,9 +65,28 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    refreshAppData();
+  // Initialize the app and automatically refresh the BCV rate
+  const initializeApp = useCallback(async () => {
+    setIsLoading(true);
+    setIsRefreshingRate(true);
+
+    try {
+      await apiService.refreshExchangeRate();
+    } catch (err) {
+      console.error(
+        "Could not automatically refresh the BCV exchange rate:",
+        err
+      );
+    } finally {
+      setIsRefreshingRate(false);
+    }
+
+    await refreshAppData();
   }, [refreshAppData]);
+
+  useEffect(() => {
+    initializeApp();
+  }, [initializeApp]);
 
   // Handlers
   const handleSaveBudget = async (
@@ -65,7 +94,12 @@ export default function App() {
     tipo_tasa: RateType,
     tasa_custom: number
   ) => {
-    const updated = await apiService.saveBudget(monto_bs, tipo_tasa, tasa_custom);
+    const updated = await apiService.saveBudget(
+      monto_bs,
+      tipo_tasa,
+      tasa_custom
+    );
+
     setBudget(updated);
     await refreshAppData();
     setCurrentScreen("dashboard");
@@ -80,7 +114,10 @@ export default function App() {
     await refreshAppData();
   };
 
-  const handleUpdateCartQuantity = async (id: number, quantity: number) => {
+  const handleUpdateCartQuantity = async (
+    id: number,
+    quantity: number
+  ) => {
     await apiService.updateCartQuantity(id, quantity);
     await refreshAppData();
   };
@@ -101,8 +138,8 @@ export default function App() {
       const newRate = await apiService.refreshExchangeRate();
       setRateInfo(newRate);
       await refreshAppData();
-    } catch (e) {
-      console.error("Failed to refresh BCV exchange rate:", e);
+    } catch (err) {
+      console.error("Failed to refresh BCV exchange rate:", err);
     } finally {
       setIsRefreshingRate(false);
     }
