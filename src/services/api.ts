@@ -14,6 +14,31 @@ const API_BASE = `${BASE_URL.replace(/\/$/, "")}/app-api`;
 
 const USER_ID_STORAGE_KEY = "rinde_plus_user_id";
 
+export interface CommunityPriceOffer extends CommunityPrice {
+  is_lowest: boolean;
+}
+
+export interface CommunityPriceGroup {
+  product: string;
+  lowest_price_usd: number;
+  highest_price_usd: number;
+  average_price_usd: number;
+  lowest_price_bs: number;
+  highest_price_bs: number;
+  average_price_bs: number;
+  reports: number;
+  supermarkets: number;
+  latest_report_at: string;
+  offers: CommunityPriceOffer[];
+}
+
+export interface CommunityPriceFilters {
+  product?: string;
+  city?: string;
+  state?: string;
+  sort?: "recent" | "price_asc" | "price_desc";
+}
+
 function createUserId(): string {
   if (
     typeof crypto !== "undefined" &&
@@ -52,6 +77,30 @@ function getUserHeaders(
   }
 
   return headers;
+}
+
+function buildCommunityQuery(filters?: CommunityPriceFilters): string {
+  const params = new URLSearchParams();
+
+  if (filters?.product?.trim()) {
+    params.set("product", filters.product.trim());
+  }
+
+  if (filters?.city?.trim()) {
+    params.set("city", filters.city.trim());
+  }
+
+  if (filters?.state?.trim()) {
+    params.set("state", filters.state.trim());
+  }
+
+  if (filters?.sort) {
+    params.set("sort", filters.sort);
+  }
+
+  const query = params.toString();
+
+  return query ? `?${query}` : "";
 }
 
 export const apiService = {
@@ -120,6 +169,8 @@ export const apiService = {
 
       return await res.json();
     } catch (e) {
+      console.warn("API fallback for exchange rate:", e);
+
       return {
         rate: 742.23,
         date: new Date().toISOString().split("T")[0],
@@ -154,6 +205,8 @@ export const apiService = {
 
       return await res.json();
     } catch (e) {
+      console.warn("API fallback for cart:", e);
+
       return {
         items: [],
         total_items: 0,
@@ -245,42 +298,21 @@ export const apiService = {
 
       return await res.json();
     } catch (e) {
+      console.warn("API fallback for history:", e);
       return [];
     }
   },
 
-  // Get community prices with filters
-  async getCommunityPrices(filters?: {
-    product?: string;
-    city?: string;
-    state?: string;
-    sort?: string;
-  }): Promise<CommunityPrice[]> {
+  // Get the original flat community price list
+  async getCommunityPrices(
+    filters?: CommunityPriceFilters
+  ): Promise<CommunityPrice[]> {
     try {
-      const params = new URLSearchParams();
+      const query = buildCommunityQuery(filters);
 
-      if (filters?.product) {
-        params.set("product", filters.product);
-      }
-
-      if (filters?.city) {
-        params.set("city", filters.city);
-      }
-
-      if (filters?.state) {
-        params.set("state", filters.state);
-      }
-
-      if (filters?.sort) {
-        params.set("sort", filters.sort);
-      }
-
-      const res = await fetch(
-        `${API_BASE}/community-prices?${params.toString()}`,
-        {
-          headers: getUserHeaders(),
-        }
-      );
+      const res = await fetch(`${API_BASE}/community-prices${query}`, {
+        headers: getUserHeaders(),
+      });
 
       if (!res.ok) {
         throw new Error("Error fetching community prices");
@@ -288,6 +320,38 @@ export const apiService = {
 
       return await res.json();
     } catch (e) {
+      console.warn("API fallback for community prices:", e);
+      return [];
+    }
+  },
+
+  // Get community prices grouped by product
+  async getCommunityPriceGroups(
+    filters?: CommunityPriceFilters
+  ): Promise<CommunityPriceGroup[]> {
+    try {
+      const query = buildCommunityQuery(filters);
+
+      const res = await fetch(
+        `${API_BASE}/community-prices/grouped${query}`,
+        {
+          headers: getUserHeaders(),
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error("Error fetching grouped community prices");
+      }
+
+      const data = await res.json();
+
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid grouped community price response");
+      }
+
+      return data as CommunityPriceGroup[];
+    } catch (e) {
+      console.warn("API fallback for grouped community prices:", e);
       return [];
     }
   },
@@ -308,7 +372,11 @@ export const apiService = {
     });
 
     if (!res.ok) {
-      throw new Error("Error publicando precio");
+      const errorData = await res.json().catch(() => ({}));
+
+      throw new Error(
+        errorData.error || "Error publicando precio"
+      );
     }
   },
 };

@@ -50,6 +50,9 @@ const VENEZUELA_STATES = [
 
 type CommunitySort = "recent" | "price_asc" | "price_desc";
 
+const COMMUNITY_CITY_STORAGE_KEY = "community_filter_city";
+const COMMUNITY_STATE_STORAGE_KEY = "community_filter_state";
+
 function formatUsd(value: number): string {
   const safeValue = Number.isFinite(Number(value)) ? Number(value) : 0;
 
@@ -97,8 +100,12 @@ export const CommunityScreen: React.FC = () => {
 
   // Filters
   const [searchProduct, setSearchProduct] = useState("");
-  const [filterCity, setFilterCity] = useState("");
-  const [filterState, setFilterState] = useState("");
+  const [filterCity, setFilterCity] = useState(() =>
+    window.localStorage.getItem(COMMUNITY_CITY_STORAGE_KEY) ?? ""
+  );
+  const [filterState, setFilterState] = useState(() =>
+    window.localStorage.getItem(COMMUNITY_STATE_STORAGE_KEY) ?? ""
+  );
   const [sortBy, setSortBy] = useState<CommunitySort>("recent");
 
   // Expanded comparison cards
@@ -114,6 +121,14 @@ export const CommunityScreen: React.FC = () => {
   const [formUserName, setFormUserName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.localStorage.setItem(COMMUNITY_CITY_STORAGE_KEY, filterCity);
+  }, [filterCity]);
+
+  useEffect(() => {
+    window.localStorage.setItem(COMMUNITY_STATE_STORAGE_KEY, filterState);
+  }, [filterState]);
 
   const loadGroups = async () => {
     setIsLoading(true);
