@@ -20,7 +20,7 @@ import { ProfileScreen } from "./screens/ProfileScreen";
 
 export default function App() {
   const [currentScreen, setCurrentScreen] =
-    useState<ScreenName>("dashboard");
+  useState<ScreenName>("inicio");
   const [budget, setBudget] = useState<Budget | null>(null);
   const [cartSummary, setCartSummary] = useState<CartSummary | null>(null);
   const [rateInfo, setRateInfo] = useState<ExchangeRateInfo | null>(null);
@@ -102,7 +102,7 @@ export default function App() {
 
     setBudget(updated);
     await refreshAppData();
-    setCurrentScreen("dashboard");
+    setCurrentScreen("inicio");
   };
 
   const handleAddToCart = async (
