@@ -1,12 +1,26 @@
 import cors from "cors";
 import express, { Request } from "express";
 import path from "path";
-import fs from "fs";
 import { createServer as createViteServer } from "vite";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
 const PORT = process.env.PORT || 3000;
-const DB_FILE = path.join(process.cwd(), "db_rinde.json");
 const DEFAULT_RATE = 742.23;
+
+// Configuración de tu base de datos de Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyAb4kyXtkHenLqrZ-kaVuNKqqd70xRtG0",
+  authDomain: "rinde-f7a8f.firebaseapp.com",
+  projectId: "rinde-f7a8f",
+  storageBucket: "rinde-f7a8f.firebasestorage.app",
+  messagingSenderId: "800458362902",
+  appId: "1:800458362902:web:da20414cfbf45652c52537",
+  measurementId: "G-69DBHR7YSW"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const dbFirestore = getFirestore(firebaseApp);
 
 interface Budget {
   id: number;
@@ -171,34 +185,34 @@ function normalizeDatabase(raw: LegacyDatabaseSchema): DatabaseSchema {
   };
 }
 
-function readDb(): DatabaseSchema {
+async function readDb(): Promise<DatabaseSchema> {
   try {
-    if (fs.existsSync(DB_FILE)) {
-      const data = fs.readFileSync(DB_FILE, "utf-8");
-      return normalizeDatabase(JSON.parse(data));
+    const docRef = doc(dbFirestore, "rinde_data", "main");
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return normalizeDatabase(docSnap.data() as LegacyDatabaseSchema);
     }
   } catch (err) {
-    console.error("Error reading database file, using fallback:", err);
+    console.error("Error leyendo de Firestore:", err);
   }
 
   return createEmptyDatabase();
 }
 
-function writeDb(db: DatabaseSchema): void {
+async function writeDb(db: DatabaseSchema): Promise<void> {
   try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
+    const docRef = doc(dbFirestore, "rinde_data", "main");
+    await setDoc(docRef, db);
   } catch (err) {
-    console.error("Error writing database file:", err);
+    console.error("Error escribiendo en Firestore:", err);
   }
 }
 
 function getUserId(req: Request): string {
   const header = req.header("X-User-ID")?.trim();
-
   if (!header) {
     return "user_default";
   }
-
   return header.slice(0, 200);
 }
 
@@ -317,7 +331,6 @@ function groupCommunityPrices(prices: CommunityPrice[]): CommunityPriceGroup[] {
       if (a.price_usd !== b.price_usd) {
         return a.price_usd - b.price_usd;
       }
-
       return (
         new Date(b.created_at).getTime() -
         new Date(a.created_at).getTime()
@@ -412,19 +425,19 @@ async function startServer() {
 
   // --- PRESUPUESTO ---
 
-  app.get(["/app-api/budget", "/api/budget"], (req, res) => {
-    const db = readDb();
+  app.get(["/app-api/budget", "/api/budget"], async (req, res) => {
+    const db = await readDb();
     const userId = getUserId(req);
     const budget = getOrCreateBudget(db, userId);
 
     recalculateSpentBs(db, userId, budget);
-    writeDb(db);
+    await writeDb(db);
 
     res.json(buildBudgetResponse(db, budget));
   });
 
-  app.post(["/app-api/budget", "/api/budget"], (req, res) => {
-    const db = readDb();
+  app.post(["/app-api/budget", "/api/budget"], async (req, res) => {
+    const db = await readDb();
     const userId = getUserId(req);
     const budget = getOrCreateBudget(db, userId);
     const { monto_bs, tipo_tasa, tasa_custom } = req.body;
@@ -445,7 +458,7 @@ async function startServer() {
     budget.updated_at = new Date().toISOString();
 
     recalculateSpentBs(db, userId, budget);
-    writeDb(db);
+    await writeDb(db);
 
     res.json({
       success: true,
@@ -455,8 +468,8 @@ async function startServer() {
 
   // --- CARRITO ---
 
-  app.get(["/app-api/cart", "/api/cart"], (req, res) => {
-    const db = readDb();
+  app.get(["/app-api/cart", "/api/cart"], async (req, res) => {
+    const db = await readDb();
     const userId = getUserId(req);
     const budget = getOrCreateBudget(db, userId);
     const activeRate = getActiveRate(db, budget);
@@ -487,7 +500,7 @@ async function startServer() {
       ) / 100;
 
     budget.spent_bs = totalBs;
-    writeDb(db);
+    await writeDb(db);
 
     res.json({
       items,
@@ -502,8 +515,8 @@ async function startServer() {
     });
   });
 
-  app.post(["/app-api/cart", "/api/cart"], (req, res) => {
-    const db = readDb();
+  app.post(["/app-api/cart", "/api/cart"], async (req, res) => {
+    const db = await readDb();
     const userId = getUserId(req);
     const budget = getOrCreateBudget(db, userId);
     const { name, price_usd, quantity } = req.body;
@@ -521,13 +534,13 @@ async function startServer() {
 
     db.cart_items.push(newItem);
     recalculateSpentBs(db, userId, budget);
-    writeDb(db);
+    await writeDb(db);
 
     res.json({ success: true, item: newItem });
   });
 
-  app.put(["/app-api/cart/:id", "/api/cart/:id"], (req, res) => {
-    const db = readDb();
+  app.put(["/app-api/cart/:id", "/api/cart/:id"], async (req, res) => {
+    const db = await readDb();
     const userId = getUserId(req);
     const id = Number.parseInt(req.params.id, 10);
     const quantity = Math.max(1, Number.parseInt(req.body.quantity, 10) || 1);
@@ -544,13 +557,13 @@ async function startServer() {
 
     const budget = getOrCreateBudget(db, userId);
     recalculateSpentBs(db, userId, budget);
-    writeDb(db);
+    await writeDb(db);
 
     return res.json({ success: true, item });
   });
 
-  app.delete(["/app-api/cart/:id", "/api/cart/:id"], (req, res) => {
-    const db = readDb();
+  app.delete(["/app-api/cart/:id", "/api/cart/:id"], async (req, res) => {
+    const db = await readDb();
     const userId = getUserId(req);
     const id = Number.parseInt(req.params.id, 10);
     const originalLength = db.cart_items.length;
@@ -565,13 +578,13 @@ async function startServer() {
 
     const budget = getOrCreateBudget(db, userId);
     recalculateSpentBs(db, userId, budget);
-    writeDb(db);
+    await writeDb(db);
 
     return res.json({ success: true });
   });
 
-  app.delete(["/app-api/cart", "/api/cart"], (req, res) => {
-    const db = readDb();
+  app.delete(["/app-api/cart", "/api/cart"], async (req, res) => {
+    const db = await readDb();
     const userId = getUserId(req);
 
     db.cart_items = db.cart_items.filter(
@@ -580,13 +593,13 @@ async function startServer() {
 
     const budget = getOrCreateBudget(db, userId);
     recalculateSpentBs(db, userId, budget);
-    writeDb(db);
+    await writeDb(db);
 
     res.json({ success: true });
   });
 
-  app.post(["/app-api/cart/checkout", "/api/cart/checkout"], (req, res) => {
-    const db = readDb();
+  app.post(["/app-api/cart/checkout", "/api/cart/checkout"], async (req, res) => {
+    const db = await readDb();
     const userId = getUserId(req);
     const budget = getOrCreateBudget(db, userId);
     const activeRate = getActiveRate(db, budget);
@@ -648,7 +661,7 @@ async function startServer() {
     budget.monto_bs = remainingBs;
     budget.spent_bs = 0;
     budget.updated_at = checkoutAt;
-    writeDb(db);
+    await writeDb(db);
 
     return res.json({
       success: true,
@@ -659,8 +672,8 @@ async function startServer() {
 
   // --- HISTORIAL ---
 
-  app.get(["/app-api/history", "/api/history"], (req, res) => {
-    const db = readDb();
+  app.get(["/app-api/history", "/api/history"], async (req, res) => {
+    const db = await readDb();
     const userId = getUserId(req);
 
     const history = db.shopping_history
@@ -678,8 +691,8 @@ async function startServer() {
 
   app.get(
     ["/app-api/community-prices", "/api/community-prices"],
-    (req, res) => {
-      const db = readDb();
+    async (req, res) => {
+      const db = await readDb();
       const product = String(req.query.product || "").toLowerCase();
       const city = String(req.query.city || "").toLowerCase();
       const state = String(req.query.state || "").toLowerCase();
@@ -726,8 +739,8 @@ async function startServer() {
       "/app-api/community-prices/grouped",
       "/api/community-prices/grouped",
     ],
-    (req, res) => {
-      const db = readDb();
+    async (req, res) => {
+      const db = await readDb();
       const product = normalizeProductKey(String(req.query.product || ""));
       const city = normalizeProductKey(String(req.query.city || ""));
       const state = normalizeProductKey(String(req.query.state || ""));
@@ -773,8 +786,8 @@ async function startServer() {
 
   app.post(
     ["/app-api/community-prices", "/api/community-prices"],
-    (req, res) => {
-      const db = readDb();
+    async (req, res) => {
+      const db = await readDb();
       const {
         product,
         price_usd,
@@ -799,7 +812,7 @@ async function startServer() {
       };
 
       db.community_prices.push(newPrice);
-      writeDb(db);
+      await writeDb(db);
 
       res.json({ success: true, price: newPrice });
     }
@@ -809,8 +822,8 @@ async function startServer() {
 
   app.get(
     ["/app-api/exchange-rate-public", "/api/exchange-rate-public"],
-    (req, res) => {
-      const db = readDb();
+    async (req, res) => {
+      const db = await readDb();
       const latestRateRecord =
         db.exchange_rates[db.exchange_rates.length - 1] ||
         createEmptyDatabase().exchange_rates[0];
@@ -827,7 +840,7 @@ async function startServer() {
   app.post(
     ["/app-api/exchange-rate/fetch", "/api/exchange-rate/fetch"],
     async (req, res) => {
-      const db = readDb();
+      const db = await readDb();
       const scraped = await scrapeBcvRate();
 
       if (scraped) {
@@ -844,7 +857,7 @@ async function startServer() {
         };
 
         db.exchange_rates.push(rateEntry);
-        writeDb(db);
+        await writeDb(db);
       }
 
       const latestRate =
