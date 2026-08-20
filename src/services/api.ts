@@ -8,13 +8,19 @@ import {
 } from "../types";
 
 const BASE_URL =
-  import.meta.env.VITE_API_URL || "https://rinde-plus.onrender.com";
+  import.meta.env.VITE_API_URL ||
+  "https://rinde-plus.onrender.com";
 
-const API_BASE = `${BASE_URL.replace(/\/$/, "")}/app-api`;
+const API_BASE =
+  `${BASE_URL.replace(/\/$/, "")}/app-api`;
 
-const USER_ID_STORAGE_KEY = "rinde_plus_user_id";
+const USER_ID_STORAGE_KEY =
+  "rinde_plus_user_id";
 
-export interface CommunityPriceOffer extends CommunityPrice {
+export type Currency = "USD" | "EUR";
+
+export interface CommunityPriceOffer
+  extends CommunityPrice {
   is_lowest: boolean;
 }
 
@@ -42,7 +48,8 @@ export interface CommunityPriceFilters {
 function createUserId(): string {
   if (
     typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
+    typeof crypto.randomUUID ===
+      "function"
   ) {
     return `rinde_user_${crypto.randomUUID()}`;
   }
@@ -53,14 +60,21 @@ function createUserId(): string {
 }
 
 function getUserId(): string {
-  const existingUserId = localStorage.getItem(USER_ID_STORAGE_KEY);
+  const existingUserId =
+    localStorage.getItem(
+      USER_ID_STORAGE_KEY
+    );
 
   if (existingUserId) {
     return existingUserId;
   }
 
   const newUserId = createUserId();
-  localStorage.setItem(USER_ID_STORAGE_KEY, newUserId);
+
+  localStorage.setItem(
+    USER_ID_STORAGE_KEY,
+    newUserId
+  );
 
   return newUserId;
 }
@@ -73,29 +87,44 @@ function getUserHeaders(
   };
 
   if (includeJsonContentType) {
-    headers["Content-Type"] = "application/json";
+    headers["Content-Type"] =
+      "application/json";
   }
 
   return headers;
 }
 
-function buildCommunityQuery(filters?: CommunityPriceFilters): string {
+function buildCommunityQuery(
+  filters?: CommunityPriceFilters
+): string {
   const params = new URLSearchParams();
 
   if (filters?.product?.trim()) {
-    params.set("product", filters.product.trim());
+    params.set(
+      "product",
+      filters.product.trim()
+    );
   }
 
   if (filters?.city?.trim()) {
-    params.set("city", filters.city.trim());
+    params.set(
+      "city",
+      filters.city.trim()
+    );
   }
 
   if (filters?.state?.trim()) {
-    params.set("state", filters.state.trim());
+    params.set(
+      "state",
+      filters.state.trim()
+    );
   }
 
   if (filters?.sort) {
-    params.set("sort", filters.sort);
+    params.set(
+      "sort",
+      filters.sort
+    );
   }
 
   const query = params.toString();
@@ -104,20 +133,32 @@ function buildCommunityQuery(filters?: CommunityPriceFilters): string {
 }
 
 export const apiService = {
-  // Fetch budget
+
+  // --------------------------------------------------
+  // PRESUPUESTO
+  // --------------------------------------------------
+
   async getBudget(): Promise<Budget> {
     try {
-      const res = await fetch(`${API_BASE}/budget`, {
-        headers: getUserHeaders(),
-      });
+      const res = await fetch(
+        `${API_BASE}/budget`,
+        {
+          headers: getUserHeaders(),
+        }
+      );
 
       if (!res.ok) {
-        throw new Error("Error fetching budget");
+        throw new Error(
+          "Error fetching budget"
+        );
       }
 
       return await res.json();
     } catch (e) {
-      console.warn("API fallback for budget:", e);
+      console.warn(
+        "API fallback for budget:",
+        e
+      );
 
       return {
         monto_bs: 0,
@@ -134,78 +175,151 @@ export const apiService = {
     }
   },
 
-  // Save/update budget
+  // --------------------------------------------------
+  // GUARDAR PRESUPUESTO
+  // --------------------------------------------------
+
   async saveBudget(
     monto_bs: number,
     tipo_tasa: RateType,
     tasa_custom: number
   ): Promise<Budget> {
-    const res = await fetch(`${API_BASE}/budget`, {
-      method: "POST",
-      headers: getUserHeaders(true),
-      body: JSON.stringify({
-        monto_bs,
-        tipo_tasa,
-        tasa_custom,
-      }),
-    });
+    const res = await fetch(
+      `${API_BASE}/budget`,
+      {
+        method: "POST",
+        headers: getUserHeaders(true),
+        body: JSON.stringify({
+          monto_bs,
+          tipo_tasa,
+          tasa_custom,
+        }),
+      }
+    );
 
     if (!res.ok) {
-      throw new Error("Error saving budget");
+      throw new Error(
+        "Error saving budget"
+      );
     }
 
     const data = await res.json();
+
     return data.budget;
   },
 
-  // Fetch exchange rate info
-  async getExchangeRate(): Promise<ExchangeRateInfo> {
+  // --------------------------------------------------
+  // TASA DE CAMBIO
+  // --------------------------------------------------
+
+  async getExchangeRate(
+    currency: Currency = "USD"
+  ): Promise<ExchangeRateInfo> {
     try {
-      const res = await fetch(`${API_BASE}/exchange-rate-public`);
+      const res = await fetch(
+        `${API_BASE}/exchange-rate-public`
+      );
 
       if (!res.ok) {
-        throw new Error("Error fetching exchange rate");
+        throw new Error(
+          "Error fetching exchange rate"
+        );
       }
 
-      return await res.json();
+      const data: ExchangeRateInfo =
+        await res.json();
+
+      if (currency === "EUR") {
+        /*
+         * El backend proporciona la tasa USD.
+         * Para EUR utilizamos la relación EUR/USD
+         * configurada actualmente por Rinde+.
+         */
+        const euroFactor = 1.065;
+
+        return {
+          ...data,
+          rate: Number(
+            (
+              data.rate *
+              euroFactor
+            ).toFixed(2)
+          ),
+          source:
+            "Banco Central de Venezuela (EUR)",
+        };
+      }
+
+      return data;
     } catch (e) {
-      console.warn("API fallback for exchange rate:", e);
+      console.warn(
+        `API fallback for ${currency} exchange rate:`,
+        e
+      );
 
       return {
-        rate: 742.23,
-        date: new Date().toISOString().split("T")[0],
-        source: "Banco Central de Venezuela (BCV)",
+        rate:
+          currency === "EUR"
+            ? 815.0
+            : 742.23,
+        date:
+          new Date()
+            .toISOString()
+            .split("T")[0],
+        source:
+          currency === "EUR"
+            ? "Banco Central de Venezuela (EUR)"
+            : "Banco Central de Venezuela (BCV)",
       };
     }
   },
 
-  // Force BCV refresh
+  // --------------------------------------------------
+  // ACTUALIZAR TASA BCV
+  // --------------------------------------------------
+
   async refreshExchangeRate(): Promise<ExchangeRateInfo> {
-    const res = await fetch(`${API_BASE}/exchange-rate/fetch`, {
-      method: "POST",
-    });
+    const res = await fetch(
+      `${API_BASE}/exchange-rate/fetch`,
+      {
+        method: "POST",
+      }
+    );
 
     if (!res.ok) {
-      throw new Error("Error refreshing rate");
+      throw new Error(
+        "Error refreshing rate"
+      );
     }
 
     return await res.json();
   },
 
-  // Fetch cart
+  // --------------------------------------------------
+  // CARRITO
+  // --------------------------------------------------
+
   async getCart(): Promise<CartSummary> {
     try {
-      const res = await fetch(`${API_BASE}/cart`, {
-        headers: getUserHeaders(),
-      });
+      const res = await fetch(
+        `${API_BASE}/cart`,
+        {
+          headers: getUserHeaders(),
+        }
+      );
 
       if (!res.ok) {
-        throw new Error("Error fetching cart");
+        throw new Error(
+          "Error fetching cart"
+        );
       }
 
       return await res.json();
     } catch (e) {
-      console.warn("API fallback for cart:", e);
+      console.warn(
+        "API fallback for cart:",
+        e
+      );
 
       return {
         items: [],
@@ -218,119 +332,199 @@ export const apiService = {
     }
   },
 
-  // Add item to cart
+  // --------------------------------------------------
+  // AGREGAR PRODUCTO AL CARRITO
+  // --------------------------------------------------
+
   async addToCart(
     name: string,
-    price_usd: number,
-    quantity: number
+    price: number,
+    quantity: number,
+    currency: Currency = "USD"
   ): Promise<void> {
-    const res = await fetch(`${API_BASE}/cart`, {
-      method: "POST",
-      headers: getUserHeaders(true),
-      body: JSON.stringify({
-        name,
-        price_usd,
-        quantity,
-      }),
-    });
+    const res = await fetch(
+      `${API_BASE}/cart`,
+      {
+        method: "POST",
+        headers: getUserHeaders(true),
+        body: JSON.stringify({
+          name,
+          price_usd: price,
+          quantity,
+
+          /*
+           * IMPORTANTE:
+           * La moneda seleccionada por el usuario
+           * viaja ahora hasta el servidor.
+           */
+          currency,
+        }),
+      }
+    );
 
     if (!res.ok) {
-      throw new Error("Error adding item to cart");
+      throw new Error(
+        "Error adding item to cart"
+      );
     }
   },
 
-  // Update item quantity
+  // --------------------------------------------------
+  // ACTUALIZAR CANTIDAD
+  // --------------------------------------------------
+
   async updateCartQuantity(
     id: number,
     quantity: number
   ): Promise<void> {
-    const res = await fetch(`${API_BASE}/cart/${id}`, {
-      method: "PUT",
-      headers: getUserHeaders(true),
-      body: JSON.stringify({ quantity }),
-    });
+    const res = await fetch(
+      `${API_BASE}/cart/${id}`,
+      {
+        method: "PUT",
+        headers: getUserHeaders(true),
+        body: JSON.stringify({
+          quantity,
+        }),
+      }
+    );
 
     if (!res.ok) {
-      throw new Error("Error updating item quantity");
+      throw new Error(
+        "Error updating item quantity"
+      );
     }
   },
 
-  // Delete item from cart
-  async deleteCartItem(id: number): Promise<void> {
-    const res = await fetch(`${API_BASE}/cart/${id}`, {
-      method: "DELETE",
-      headers: getUserHeaders(),
-    });
+  // --------------------------------------------------
+  // ELIMINAR PRODUCTO
+  // --------------------------------------------------
+
+  async deleteCartItem(
+    id: number
+  ): Promise<void> {
+    const res = await fetch(
+      `${API_BASE}/cart/${id}`,
+      {
+        method: "DELETE",
+        headers: getUserHeaders(),
+      }
+    );
 
     if (!res.ok) {
-      throw new Error("Error deleting cart item");
+      throw new Error(
+        "Error deleting cart item"
+      );
     }
   },
 
-  // Checkout
+  // --------------------------------------------------
+  // CHECKOUT
+  // --------------------------------------------------
+
   async checkout(): Promise<{
     success: boolean;
     record: HistoryRecord;
   }> {
-    const res = await fetch(`${API_BASE}/cart/checkout`, {
-      method: "POST",
-      headers: getUserHeaders(),
-    });
+    const res = await fetch(
+      `${API_BASE}/cart/checkout`,
+      {
+        method: "POST",
+        headers: getUserHeaders(),
+      }
+    );
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Error al procesar checkout");
+      const err =
+        await res
+          .json()
+          .catch(() => ({}));
+
+      throw new Error(
+        err.error ||
+          "Error al procesar checkout"
+      );
     }
 
     return await res.json();
   },
 
-  // Get shopping history
-  async getHistory(): Promise<HistoryRecord[]> {
+  // --------------------------------------------------
+  // HISTORIAL
+  // --------------------------------------------------
+
+  async getHistory(): Promise<
+    HistoryRecord[]
+  > {
     try {
-      const res = await fetch(`${API_BASE}/history`, {
-        headers: getUserHeaders(),
-      });
+      const res = await fetch(
+        `${API_BASE}/history`,
+        {
+          headers: getUserHeaders(),
+        }
+      );
 
       if (!res.ok) {
-        throw new Error("Error fetching history");
+        throw new Error(
+          "Error fetching history"
+        );
       }
 
       return await res.json();
     } catch (e) {
-      console.warn("API fallback for history:", e);
+      console.warn(
+        "API fallback for history:",
+        e
+      );
+
       return [];
     }
   },
 
-  // Get the original flat community price list
+  // --------------------------------------------------
+  // PRECIOS DE LA COMUNIDAD
+  // --------------------------------------------------
+
   async getCommunityPrices(
     filters?: CommunityPriceFilters
   ): Promise<CommunityPrice[]> {
     try {
-      const query = buildCommunityQuery(filters);
+      const query =
+        buildCommunityQuery(filters);
 
-      const res = await fetch(`${API_BASE}/community-prices${query}`, {
-        headers: getUserHeaders(),
-      });
+      const res = await fetch(
+        `${API_BASE}/community-prices${query}`,
+        {
+          headers: getUserHeaders(),
+        }
+      );
 
       if (!res.ok) {
-        throw new Error("Error fetching community prices");
+        throw new Error(
+          "Error fetching community prices"
+        );
       }
 
       return await res.json();
     } catch (e) {
-      console.warn("API fallback for community prices:", e);
+      console.warn(
+        "API fallback for community prices:",
+        e
+      );
+
       return [];
     }
   },
 
-  // Get community prices grouped by product
+  // --------------------------------------------------
+  // PRECIOS AGRUPADOS
+  // --------------------------------------------------
+
   async getCommunityPriceGroups(
     filters?: CommunityPriceFilters
   ): Promise<CommunityPriceGroup[]> {
     try {
-      const query = buildCommunityQuery(filters);
+      const query =
+        buildCommunityQuery(filters);
 
       const res = await fetch(
         `${API_BASE}/community-prices/grouped${query}`,
@@ -340,23 +534,35 @@ export const apiService = {
       );
 
       if (!res.ok) {
-        throw new Error("Error fetching grouped community prices");
+        throw new Error(
+          "Error fetching grouped community prices"
+        );
       }
 
-      const data = await res.json();
+      const data =
+        await res.json();
 
       if (!Array.isArray(data)) {
-        throw new Error("Invalid grouped community price response");
+        throw new Error(
+          "Invalid grouped community price response"
+        );
       }
 
       return data as CommunityPriceGroup[];
     } catch (e) {
-      console.warn("API fallback for grouped community prices:", e);
+      console.warn(
+        "API fallback for grouped community prices:",
+        e
+      );
+
       return [];
     }
   },
 
-  // Share a price to community
+  // --------------------------------------------------
+  // COMPARTIR PRECIO
+  // --------------------------------------------------
+
   async sharePrice(payload: {
     product: string;
     price_usd: number;
@@ -365,17 +571,26 @@ export const apiService = {
     state: string;
     user_name?: string;
   }): Promise<void> {
-    const res = await fetch(`${API_BASE}/community-prices`, {
-      method: "POST",
-      headers: getUserHeaders(true),
-      body: JSON.stringify(payload),
-    });
+    const res = await fetch(
+      `${API_BASE}/community-prices`,
+      {
+        method: "POST",
+        headers: getUserHeaders(true),
+        body: JSON.stringify(
+          payload
+        ),
+      }
+    );
 
     if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
+      const errorData =
+        await res
+          .json()
+          .catch(() => ({}));
 
       throw new Error(
-        errorData.error || "Error publicando precio"
+        errorData.error ||
+          "Error publicando precio"
       );
     }
   },

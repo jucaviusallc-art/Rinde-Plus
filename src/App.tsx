@@ -18,22 +18,48 @@ import { HistoryScreen } from "./screens/HistoryScreen";
 import { CommunityScreen } from "./screens/CommunityScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 
+type Currency = "USD" | "EUR";
+
 export default function App() {
   const [currentScreen, setCurrentScreen] =
-  useState<ScreenName>("inicio");
-  const [budget, setBudget] = useState<Budget | null>(null);
-  const [cartSummary, setCartSummary] = useState<CartSummary | null>(null);
-  const [rateInfo, setRateInfo] = useState<ExchangeRateInfo | null>(null);
-  const [history, setHistory] = useState<HistoryRecord[]>([]);
+    useState<ScreenName>("inicio");
 
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    return localStorage.getItem("rinde_theme") === "dark";
-  });
+  const [budget, setBudget] = useState<Budget | null>(null);
+  const [cartSummary, setCartSummary] =
+    useState<CartSummary | null>(null);
+  const [rateInfo, setRateInfo] =
+    useState<ExchangeRateInfo | null>(null);
+  const [history, setHistory] =
+    useState<HistoryRecord[]>([]);
+
+  const [monedaSeleccionada, setMonedaSeleccionada] =
+    useState<Currency>(() => {
+      const savedCurrency =
+        localStorage.getItem("rinde_currency");
+
+      return savedCurrency === "EUR" ? "EUR" : "USD";
+    });
+
+  const [selectedRateInfo, setSelectedRateInfo] =
+    useState<ExchangeRateInfo | null>(null);
+
+  const [isDarkMode, setIsDarkMode] =
+    useState<boolean>(() => {
+      return (
+        localStorage.getItem("rinde_theme") === "dark"
+      );
+    });
+
   const [isRefreshingRate, setIsRefreshingRate] =
     useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Apply dark mode class to root html element
+  const [isLoading, setIsLoading] =
+    useState<boolean>(true);
+
+  // --------------------------------------------------
+  // TEMA
+  // --------------------------------------------------
+
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add("dark");
@@ -44,13 +70,21 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Load all app data from API
+  // --------------------------------------------------
+  // CARGA DE DATOS
+  // --------------------------------------------------
+
   const refreshAppData = useCallback(async () => {
     try {
-      const [bData, cData, rData, hData] = await Promise.all([
+      const [
+        bData,
+        cData,
+        rData,
+        hData,
+      ] = await Promise.all([
         apiService.getBudget(),
         apiService.getCart(),
-        apiService.getExchangeRate(),
+        apiService.getExchangeRate("USD"),
         apiService.getHistory(),
       ]);
 
@@ -58,14 +92,27 @@ export default function App() {
       setCartSummary(cData);
       setRateInfo(rData);
       setHistory(hData);
+
+      const selectedRate =
+        monedaSeleccionada === "EUR"
+          ? await apiService.getExchangeRate("EUR")
+          : rData;
+
+      setSelectedRateInfo(selectedRate);
     } catch (err) {
-      console.error("Error loading app data:", err);
+      console.error(
+        "Error loading app data:",
+        err
+      );
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [monedaSeleccionada]);
 
-  // Initialize the app and automatically refresh the BCV rate
+  // --------------------------------------------------
+  // INICIALIZACIÓN
+  // --------------------------------------------------
+
   const initializeApp = useCallback(async () => {
     setIsLoading(true);
     setIsRefreshingRate(true);
@@ -88,100 +135,196 @@ export default function App() {
     initializeApp();
   }, [initializeApp]);
 
-  // Handlers
+  // --------------------------------------------------
+  // CAMBIO DE MONEDA
+  // --------------------------------------------------
+
+  const handleChangeCurrency = async (
+    currency: Currency
+  ) => {
+    setMonedaSeleccionada(currency);
+
+    localStorage.setItem(
+      "rinde_currency",
+      currency
+    );
+
+    try {
+      const newRate =
+        await apiService.getExchangeRate(currency);
+
+      setSelectedRateInfo(newRate);
+      await refreshAppData();
+    } catch (err) {
+      console.error(
+        "Error obteniendo tasa de moneda:",
+        err
+      );
+    }
+  };
+
+  // --------------------------------------------------
+  // GUARDAR PRESUPUESTO
+  // --------------------------------------------------
+
   const handleSaveBudget = async (
     monto_bs: number,
     tipo_tasa: RateType,
     tasa_custom: number
   ) => {
-    const updated = await apiService.saveBudget(
-      monto_bs,
-      tipo_tasa,
-      tasa_custom
-    );
+    const updated =
+      await apiService.saveBudget(
+        monto_bs,
+        tipo_tasa,
+        tasa_custom
+      );
 
     setBudget(updated);
     await refreshAppData();
     setCurrentScreen("inicio");
   };
 
+  // --------------------------------------------------
+  // AGREGAR PRODUCTO (Corregido con parámetro de moneda)
+  // --------------------------------------------------
+
   const handleAddToCart = async (
     name: string,
-    price_usd: number,
-    quantity: number
+    price: number,
+    quantity: number,
+    currency: Currency
   ) => {
-    await apiService.addToCart(name, price_usd, quantity);
+    await apiService.addToCart(
+      name,
+      price,
+      quantity,
+      currency
+    );
+
     await refreshAppData();
   };
+
+  // --------------------------------------------------
+  // ACTUALIZAR CANTIDAD
+  // --------------------------------------------------
 
   const handleUpdateCartQuantity = async (
     id: number,
     quantity: number
   ) => {
-    await apiService.updateCartQuantity(id, quantity);
+    await apiService.updateCartQuantity(
+      id,
+      quantity
+    );
+
     await refreshAppData();
   };
 
-  const handleDeleteCartItem = async (id: number) => {
+  // --------------------------------------------------
+  // ELIMINAR PRODUCTO
+  // --------------------------------------------------
+
+  const handleDeleteCartItem = async (
+    id: number
+  ) => {
     await apiService.deleteCartItem(id);
     await refreshAppData();
   };
+
+  // --------------------------------------------------
+  // CHECKOUT
+  // --------------------------------------------------
 
   const handleCheckout = async () => {
     await apiService.checkout();
     await refreshAppData();
   };
 
+  // --------------------------------------------------
+  // ACTUALIZAR TASA
+  // --------------------------------------------------
+
   const handleRefreshExchangeRate = async () => {
     try {
       setIsRefreshingRate(true);
-      const newRate = await apiService.refreshExchangeRate();
-      setRateInfo(newRate);
+      await apiService.refreshExchangeRate();
+
+      const usdRate =
+        await apiService.getExchangeRate("USD");
+
+      setRateInfo(usdRate);
+
+      const selectedRate =
+        await apiService.getExchangeRate(
+          monedaSeleccionada
+        );
+
+      setSelectedRateInfo(selectedRate);
       await refreshAppData();
     } catch (err) {
-      console.error("Failed to refresh BCV exchange rate:", err);
+      console.error(
+        "Failed to refresh exchange rate:",
+        err
+      );
     } finally {
       setIsRefreshingRate(false);
     }
   };
 
+  // --------------------------------------------------
+  // TEMA
+  // --------------------------------------------------
+
   const toggleDarkMode = () => {
     setIsDarkMode((prev) => !prev);
   };
 
-  const cartCount = cartSummary?.total_items || 0;
+  const cartCount =
+    cartSummary?.total_items || 0;
+
+  const activeSelectedRate =
+    budget?.tipo_tasa === "custom"
+      ? budget.active_rate
+      : selectedRateInfo?.rate ??
+        rateInfo?.rate ??
+        null;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200 flex flex-col">
-      {/* Top Navigation Header */}
+
+      {/* Header */}
       <Header
         currentScreen={currentScreen}
         onNavigate={setCurrentScreen}
         budget={budget}
-        rateInfo={rateInfo}
+        rateInfo={selectedRateInfo ?? rateInfo}
         cartCount={cartCount}
         isDarkMode={isDarkMode}
         onToggleDarkMode={toggleDarkMode}
         onRefreshRate={handleRefreshExchangeRate}
         isRefreshingRate={isRefreshingRate}
+        monedaSeleccionada={monedaSeleccionada}
+        selectedRate={activeSelectedRate}
       />
 
-      {/* Main App Layout */}
+      {/* Main Layout */}
       <div className="flex-1 max-w-7xl w-full mx-auto flex pb-20 md:pb-6">
-        {/* Sidebar for Desktop */}
+
+        {/* Sidebar */}
         <Navigation
           currentScreen={currentScreen}
           onNavigate={setCurrentScreen}
           cartCount={cartCount}
         />
 
-        {/* Content Area */}
+        {/* Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto min-w-0">
+
           {isLoading ? (
             <div className="py-20 text-center space-y-3">
               <div className="w-10 h-10 border-4 border-[#2E7D32] border-t-transparent rounded-full animate-spin mx-auto" />
               <p className="text-sm font-semibold text-slate-500">
-                Iniciando Rinde+ y sincronizando tasa BCV...
+                Iniciando Rinde+...
               </p>
             </div>
           ) : (
@@ -189,10 +332,12 @@ export default function App() {
               {currentScreen === "inicio" && (
                 <HomeScreen
                   budget={budget}
-                  rateInfo={rateInfo}
+                  rateInfo={selectedRateInfo ?? rateInfo}
                   onSaveBudget={handleSaveBudget}
                   onRefreshRate={handleRefreshExchangeRate}
                   isRefreshingRate={isRefreshingRate}
+                  monedaSeleccionada={monedaSeleccionada}
+                  onChangeCurrency={handleChangeCurrency}
                 />
               )}
 
@@ -207,6 +352,8 @@ export default function App() {
               {currentScreen === "agregar" && (
                 <AddProductScreen
                   budget={budget}
+                  monedaSeleccionada={monedaSeleccionada}
+                  selectedRate={activeSelectedRate}
                   onAddToCart={handleAddToCart}
                   onNavigate={setCurrentScreen}
                 />
@@ -216,6 +363,8 @@ export default function App() {
                 <CartScreen
                   budget={budget}
                   cartSummary={cartSummary}
+                  monedaSeleccionada={monedaSeleccionada}
+                  selectedRate={activeSelectedRate}
                   onUpdateQuantity={handleUpdateCartQuantity}
                   onDeleteItem={handleDeleteCartItem}
                   onCheckout={handleCheckout}
@@ -224,15 +373,19 @@ export default function App() {
               )}
 
               {currentScreen === "historial" && (
-                <HistoryScreen history={history} />
+                <HistoryScreen
+                  history={history}
+                />
               )}
 
-              {currentScreen === "comunidad" && <CommunityScreen />}
+              {currentScreen === "comunidad" && (
+                <CommunityScreen />
+              )}
 
               {currentScreen === "perfil" && (
                 <ProfileScreen
                   budget={budget}
-                  rateInfo={rateInfo}
+                  rateInfo={selectedRateInfo ?? rateInfo}
                   isDarkMode={isDarkMode}
                   onToggleDarkMode={toggleDarkMode}
                   onRefreshRate={handleRefreshExchangeRate}
@@ -242,6 +395,7 @@ export default function App() {
               )}
             </>
           )}
+
         </main>
       </div>
     </div>
