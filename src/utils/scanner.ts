@@ -6,7 +6,7 @@ import {
 import { Ocr } from "@capacitor-community/image-to-text";
 
 /**
- * Convierte un número reconocido por OCR a valor decimal.
+ * Convierte un n├║mero reconocido por OCR a valor decimal.
  *
  * Ejemplos:
  * 1,35 -> 1.35
@@ -26,8 +26,8 @@ function formatPrice(value: number): string {
 /**
  * Comprueba si un valor puede considerarse un precio razonable.
  *
- * El objetivo es evitar que números como años, cantidades enormes
- * o códigos de productos sean seleccionados como precio.
+ * El objetivo es evitar que n├║meros como a├▒os, cantidades enormes
+ * o c├│digos de productos sean seleccionados como precio.
  */
 function isValidPrice(value: number): boolean {
   return Number.isFinite(value) && value > 0 && value <= 10000;
@@ -42,7 +42,7 @@ function isValidPrice(value: number): boolean {
  * ref 2.10
  * 1.35 REF
  *
- * También contempla una posible separación del decimal provocada
+ * Tambi├®n contempla una posible separaci├│n del decimal provocada
  * por el OCR:
  *
  * REF 1 35 -> 1.35
@@ -88,7 +88,7 @@ function findRefPrice(text: string): number | null {
 }
 
 /**
- * Busca un precio asociado a dólar.
+ * Busca un precio asociado a d├│lar.
  *
  * Ejemplos:
  * $1.35
@@ -98,7 +98,7 @@ function findRefPrice(text: string): number | null {
  * 1.35 USD
  * 1.35 $
  *
- * También contempla que OCR separe un decimal:
+ * Tambi├®n contempla que OCR separe un decimal:
  * $ 1 35
  */
 function findDollarPrice(text: string): number | null {
@@ -145,20 +145,20 @@ function findDollarPrice(text: string): number | null {
  * Busca un precio asociado al euro.
  *
  * Ejemplos:
- * €1.50
- * € 1,50
+ * Ôé¼1.50
+ * Ôé¼ 1,50
  * EUR 1.50
  * 1.50 EUR
  */
 function findEuroPrice(text: string): number | null {
   const patterns = [
-    /(?:EUR|€)\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)/i,
+    /(?:EUR|Ôé¼)\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)/i,
 
-    /([0-9]{1,4}(?:[.,][0-9]{1,2})?)\s*(?:EUR|€)\b/i,
+    /([0-9]{1,4}(?:[.,][0-9]{1,2})?)\s*(?:EUR|Ôé¼)\b/i,
 
-    /(?:EUR|€)\s*([0-9]{1,4})\s+([0-9]{1,2})\b/i,
+    /(?:EUR|Ôé¼)\s*([0-9]{1,4})\s+([0-9]{1,2})\b/i,
 
-    /([0-9]{1,4})\s+([0-9]{1,2})\s*(?:EUR|€)\b/i,
+    /([0-9]{1,4})\s+([0-9]{1,2})\s*(?:EUR|Ôé¼)\b/i,
   ];
 
   for (const pattern of patterns) {
@@ -187,14 +187,14 @@ function findEuroPrice(text: string): number | null {
 }
 
 /**
- * Último recurso:
- * busca números decimales aunque no tengan un identificador monetario.
+ * ├Ültimo recurso:
+ * busca n├║meros decimales aunque no tengan un identificador monetario.
  *
  * Ejemplo:
  * Harina Pan 1.35
  *
  * Solamente utilizamos esta estrategia cuando no encontramos
- * REF, dólar ni euro.
+ * REF, d├│lar ni euro.
  */
 function findStandaloneDecimalPrice(text: string): number | null {
   const matches = text.match(
@@ -214,7 +214,7 @@ function findStandaloneDecimalPrice(text: string): number | null {
   }
 
   /**
-   * Preferimos valores pequeños y decimales, que son los más
+   * Preferimos valores peque├▒os y decimales, que son los m├ís
    * habituales para productos de supermercado.
    *
    * Ejemplos:
@@ -240,13 +240,13 @@ function findStandaloneDecimalPrice(text: string): number | null {
  * PRIORIDAD:
  *
  * 1. REF / Ref / ref
- * 2. Dólar: $, US$, USD
- * 3. Euro: €, EUR
- * 4. Número decimal sin símbolo
+ * 2. D├│lar: $, US$, USD
+ * 3. Euro: Ôé¼, EUR
+ * 4. N├║mero decimal sin s├¡mbolo
  *
  * REF se interpreta como precio de referencia en divisas y,
  * para Rinde+, se incorpora al campo de precio utilizado
- * actualmente por la aplicación.
+ * actualmente por la aplicaci├│n.
  */
 function extractCurrencyPrice(text: string): string | null {
   if (!text) {
@@ -254,13 +254,13 @@ function extractCurrencyPrice(text: string): string | null {
   }
 
   const normalizedText = text
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
+    .replace(/[ÔÇ£ÔÇØ]/g, '"')
+    .replace(/[ÔÇÿÔÇÖ]/g, "'")
     .replace(/\s+/g, " ")
     .trim();
 
   console.log(
-    "Texto normalizado para análisis:",
+    "Texto normalizado para an├ílisis:",
     normalizedText
   );
 
@@ -275,13 +275,13 @@ function extractCurrencyPrice(text: string): string | null {
   }
 
   // =========================================================
-  // PRIORIDAD 2: DÓLAR
+  // PRIORIDAD 2: D├ôLAR
   // =========================================================
   const dollarPrice = findDollarPrice(normalizedText);
 
   if (dollarPrice !== null) {
     console.log(
-      "Precio detectado mediante dólar:",
+      "Precio detectado mediante d├│lar:",
       dollarPrice
     );
 
@@ -303,7 +303,7 @@ function extractCurrencyPrice(text: string): string | null {
   }
 
   // =========================================================
-  // PRIORIDAD 4: DECIMAL SIN SÍMBOLO
+  // PRIORIDAD 4: DECIMAL SIN S├ìMBOLO
   // =========================================================
   const standalonePrice =
     findStandaloneDecimalPrice(normalizedText);
@@ -321,12 +321,12 @@ function extractCurrencyPrice(text: string): string | null {
 }
 
 /**
- * Escanea una fotografía y obtiene el precio.
+ * Escanea una fotograf├¡a y obtiene el precio.
  */
 export async function scanCurrencyAmount(): Promise<string | null> {
   try {
     // -------------------------------------------------------
-    // 1. Abrir cámara
+    // 1. Abrir c├ímara
     // -------------------------------------------------------
     const photo = await Camera.getPhoto({
       quality: 90,
@@ -340,7 +340,7 @@ export async function scanCurrencyAmount(): Promise<string | null> {
     // -------------------------------------------------------
     if (!photo.path) {
       console.error(
-        "No se obtuvo la ruta local de la fotografía."
+        "No se obtuvo la ruta local de la fotograf├¡a."
       );
 
       return null;
@@ -372,7 +372,7 @@ export async function scanCurrencyAmount(): Promise<string | null> {
 
     if (!price) {
       console.warn(
-        "No se encontró un precio válido en la imagen."
+        "No se encontr├│ un precio v├ílido en la imagen."
       );
 
       return null;
