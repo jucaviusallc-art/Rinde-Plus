@@ -620,8 +620,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                   <CheckCircle2 className="w-6 h-6" />
 
                   <span>
-                    Finalizar compra
-                    (Guardar en Historial)
+                    Finalizar Compra
                   </span>
                 </>
               )}
