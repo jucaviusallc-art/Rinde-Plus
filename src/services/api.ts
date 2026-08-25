@@ -17,6 +17,9 @@ const API_BASE =
 const USER_ID_STORAGE_KEY =
   "rinde_plus_user_id";
 
+const DOLAR_API_BASE =
+  "https://ve.dolarapi.com/v1";
+
 export type Currency = "USD" | "EUR";
 
 export interface CommunityPriceOffer
@@ -45,11 +48,14 @@ export interface CommunityPriceFilters {
   sort?: "recent" | "price_asc" | "price_desc";
 }
 
+// --------------------------------------------------
+// USUARIO
+// --------------------------------------------------
+
 function createUserId(): string {
   if (
     typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID ===
-      "function"
+    typeof crypto.randomUUID === "function"
   ) {
     return `rinde_user_${crypto.randomUUID()}`;
   }
@@ -94,6 +100,10 @@ function getUserHeaders(
   return headers;
 }
 
+// --------------------------------------------------
+// COMUNIDAD
+// --------------------------------------------------
+
 function buildCommunityQuery(
   filters?: CommunityPriceFilters
 ): string {
@@ -132,6 +142,127 @@ function buildCommunityQuery(
   return query ? `?${query}` : "";
 }
 
+// --------------------------------------------------
+// NORMALIZAR RESPUESTA DOLARAPI
+// --------------------------------------------------
+
+function normalizeDolarApiRate(
+  data: any,
+  currency: Currency
+): ExchangeRateInfo {
+  if (!data || typeof data !== "object") {
+    throw new Error(
+      `Respuesta inválida de DolarApi para ${currency}`
+    );
+  }
+
+  /*
+   * DolarApi devuelve:
+   *
+   * {
+   *   fuente,
+   *   nombre,
+   *   moneda,
+   *   compra,
+   *   venta,
+   *   promedio,
+   *   fechaActualizacion
+   * }
+   *
+   * Para Rinde+ utilizamos "promedio".
+   */
+
+  const rate = Number(data.promedio);
+
+  if (
+    !Number.isFinite(rate) ||
+    rate <= 0
+  ) {
+    throw new Error(
+      `DolarApi devolvió una tasa inválida para ${currency}`
+    );
+  }
+
+  const expectedCurrency =
+    currency === "USD"
+      ? "USD"
+      : "EUR";
+
+  /*
+   * Validación adicional:
+   * evita aceptar accidentalmente una
+   * respuesta de otra moneda.
+   */
+
+  if (
+    data.moneda &&
+    String(data.moneda).toUpperCase() !==
+      expectedCurrency
+  ) {
+    throw new Error(
+      `DolarApi devolvió ${data.moneda} cuando se esperaba ${expectedCurrency}`
+    );
+  }
+
+  return {
+    rate,
+    date:
+      data.fechaActualizacion ||
+      new Date()
+        .toISOString()
+        .split("T")[0],
+
+    source:
+      data.fuente
+        ? `DolarApi - ${data.fuente}`
+        : "DolarApi - BCV",
+
+    ...(data.fechaActualizacion
+      ? {
+          last_updated:
+            data.fechaActualizacion,
+        }
+      : {}),
+  };
+}
+
+// --------------------------------------------------
+// OBTENER TASA DIRECTAMENTE DESDE DOLARAPI
+// --------------------------------------------------
+
+async function fetchDolarApiRate(
+  currency: Currency
+): Promise<ExchangeRateInfo> {
+  const endpoint =
+    currency === "EUR"
+      ? `${DOLAR_API_BASE}/euros/oficial`
+      : `${DOLAR_API_BASE}/dolares/oficial`;
+
+  const res = await fetch(endpoint, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `DolarApi HTTP ${res.status} para ${currency}`
+    );
+  }
+
+  const data = await res.json();
+
+  return normalizeDolarApiRate(
+    data,
+    currency
+  );
+}
+
+// --------------------------------------------------
+// SERVICIO API
+// --------------------------------------------------
+
 export const apiService = {
 
   // --------------------------------------------------
@@ -154,6 +285,7 @@ export const apiService = {
       }
 
       return await res.json();
+
     } catch (e) {
       console.warn(
         "API fallback for budget:",
@@ -215,62 +347,134 @@ export const apiService = {
   async getExchangeRate(
     currency: Currency = "USD"
   ): Promise<ExchangeRateInfo> {
+
+    /*
+     * IMPORTANTE:
+     *
+     * La tasa oficial se obtiene directamente
+     * desde DolarApi.
+     *
+     * USD:
+     * https://ve.dolarapi.com/v1/dolares/oficial
+     *
+     * EUR:
+     * https://ve.dolarapi.com/v1/euros/oficial
+     *
+     * De esta manera NO utilizamos la tasa USD
+     * para calcular artificialmente la tasa EUR.
+     */
+
     try {
-      const res = await fetch(
-        `${API_BASE}/exchange-rate-public`
+      const rate =
+        await fetchDolarApiRate(
+          currency
+        );
+
+      console.log(
+        `[Rinde+] DolarApi ${currency}:`,
+        rate.rate
       );
 
-      if (!res.ok) {
-        throw new Error(
-          "Error fetching exchange rate"
-        );
-      }
+      return rate;
 
-      const data: ExchangeRateInfo =
-        await res.json();
-
-      if (currency === "EUR") {
-        /*
-         * El backend proporciona la tasa USD.
-         * Para EUR utilizamos la relación EUR/USD
-         * configurada actualmente por Rinde+.
-         */
-        const euroFactor = 1.065;
-
-        return {
-          ...data,
-          rate: Number(
-            (
-              data.rate *
-              euroFactor
-            ).toFixed(2)
-          ),
-          source:
-            "Banco Central de Venezuela (EUR)",
-        };
-      }
-
-      return data;
     } catch (e) {
+
       console.warn(
-        `API fallback for ${currency} exchange rate:`,
+        `Error consultando DolarApi para ${currency}:`,
         e
       );
 
-      return {
-        rate:
-          currency === "EUR"
-            ? 815.0
-            : 742.23,
-        date:
-          new Date()
-            .toISOString()
-            .split("T")[0],
-        source:
-          currency === "EUR"
-            ? "Banco Central de Venezuela (EUR)"
-            : "Banco Central de Venezuela (BCV)",
-      };
+      /*
+       * Como respaldo, intentamos consultar
+       * nuestro backend.
+       *
+       * Esto solamente se utiliza si DolarApi
+       * no está disponible.
+       */
+
+      try {
+
+        const url =
+          `${API_BASE}/exchange-rate-public` +
+          `?currency=${currency}`;
+
+        const res = await fetch(url, {
+          headers: {
+            Accept: "application/json",
+          },
+        });
+
+        if (!res.ok) {
+          throw new Error(
+            `Backend HTTP ${res.status}`
+          );
+        }
+
+        const data =
+          await res.json();
+
+        const rate =
+          Number(data.rate);
+
+        if (
+          !Number.isFinite(rate) ||
+          rate <= 0
+        ) {
+          throw new Error(
+            `Tasa inválida recibida del backend para ${currency}`
+          );
+        }
+
+        return {
+          rate,
+
+          date:
+            data.date ||
+            new Date()
+              .toISOString()
+              .split("T")[0],
+
+          source:
+            data.source ||
+            `Backend Rinde+ (${currency})`,
+
+          ...(data.last_updated
+            ? {
+                last_updated:
+                  data.last_updated,
+              }
+            : {}),
+        };
+
+      } catch (backendError) {
+
+        console.warn(
+          `Backend fallback también falló para ${currency}:`,
+          backendError
+        );
+
+        /*
+         * Último respaldo.
+         *
+         * Estos valores NO se utilizan mientras
+         * DolarApi esté funcionando.
+         */
+
+        return {
+          rate:
+            currency === "EUR"
+              ? 916.00
+              : 784.66,
+
+          date:
+            new Date()
+              .toISOString()
+              .split("T")[0],
+
+          source:
+            `DolarApi - BCV (respaldo ${currency})`,
+        };
+      }
     }
   },
 
@@ -279,20 +483,41 @@ export const apiService = {
   // --------------------------------------------------
 
   async refreshExchangeRate(): Promise<ExchangeRateInfo> {
-    const res = await fetch(
-      `${API_BASE}/exchange-rate/fetch`,
-      {
-        method: "POST",
-      }
-    );
 
-    if (!res.ok) {
-      throw new Error(
-        "Error refreshing rate"
+    /*
+     * La actualización se realiza directamente
+     * desde DolarApi para evitar depender de una
+     * posible lógica incorrecta del servidor.
+     *
+     * Se consulta USD por defecto, que mantiene
+     * compatibilidad con el método existente.
+     */
+
+    try {
+      return await fetchDolarApiRate("USD");
+
+    } catch (e) {
+
+      console.warn(
+        "DolarApi refresh failed, using backend:",
+        e
       );
-    }
 
-    return await res.json();
+      const res = await fetch(
+        `${API_BASE}/exchange-rate/fetch`,
+        {
+          method: "POST",
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error(
+          "Error refreshing rate"
+        );
+      }
+
+      return await res.json();
+    }
   },
 
   // --------------------------------------------------
@@ -315,7 +540,9 @@ export const apiService = {
       }
 
       return await res.json();
+
     } catch (e) {
+
       console.warn(
         "API fallback for cart:",
         e
@@ -342,20 +569,27 @@ export const apiService = {
     quantity: number,
     currency: Currency = "USD"
   ): Promise<void> {
+
     const res = await fetch(
       `${API_BASE}/cart`,
       {
         method: "POST",
         headers: getUserHeaders(true),
+
         body: JSON.stringify({
           name,
+
+          /*
+           * Se conserva el nombre del campo
+           * utilizado actualmente por el backend.
+           */
           price_usd: price,
+
           quantity,
 
           /*
-           * IMPORTANTE:
-           * La moneda seleccionada por el usuario
-           * viaja ahora hasta el servidor.
+           * La moneda original del producto
+           * se envía explícitamente.
            */
           currency,
         }),
@@ -377,11 +611,13 @@ export const apiService = {
     id: number,
     quantity: number
   ): Promise<void> {
+
     const res = await fetch(
       `${API_BASE}/cart/${id}`,
       {
         method: "PUT",
         headers: getUserHeaders(true),
+
         body: JSON.stringify({
           quantity,
         }),
@@ -402,6 +638,7 @@ export const apiService = {
   async deleteCartItem(
     id: number
   ): Promise<void> {
+
     const res = await fetch(
       `${API_BASE}/cart/${id}`,
       {
@@ -425,6 +662,7 @@ export const apiService = {
     success: boolean;
     record: HistoryRecord;
   }> {
+
     const res = await fetch(
       `${API_BASE}/cart/checkout`,
       {
@@ -434,6 +672,7 @@ export const apiService = {
     );
 
     if (!res.ok) {
+
       const err =
         await res
           .json()
@@ -455,7 +694,9 @@ export const apiService = {
   async getHistory(): Promise<
     HistoryRecord[]
   > {
+
     try {
+
       const res = await fetch(
         `${API_BASE}/history`,
         {
@@ -470,7 +711,9 @@ export const apiService = {
       }
 
       return await res.json();
+
     } catch (e) {
+
       console.warn(
         "API fallback for history:",
         e
@@ -487,7 +730,9 @@ export const apiService = {
   async getCommunityPrices(
     filters?: CommunityPriceFilters
   ): Promise<CommunityPrice[]> {
+
     try {
+
       const query =
         buildCommunityQuery(filters);
 
@@ -505,7 +750,9 @@ export const apiService = {
       }
 
       return await res.json();
+
     } catch (e) {
+
       console.warn(
         "API fallback for community prices:",
         e
@@ -522,7 +769,9 @@ export const apiService = {
   async getCommunityPriceGroups(
     filters?: CommunityPriceFilters
   ): Promise<CommunityPriceGroup[]> {
+
     try {
+
       const query =
         buildCommunityQuery(filters);
 
@@ -549,7 +798,9 @@ export const apiService = {
       }
 
       return data as CommunityPriceGroup[];
+
     } catch (e) {
+
       console.warn(
         "API fallback for grouped community prices:",
         e
@@ -571,11 +822,13 @@ export const apiService = {
     state: string;
     user_name?: string;
   }): Promise<void> {
+
     const res = await fetch(
       `${API_BASE}/community-prices`,
       {
         method: "POST",
         headers: getUserHeaders(true),
+
         body: JSON.stringify(
           payload
         ),
@@ -583,6 +836,7 @@ export const apiService = {
     );
 
     if (!res.ok) {
+
       const errorData =
         await res
           .json()

@@ -7,11 +7,16 @@ import { createServer as createViteServer } from "vite";
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(process.cwd(), "db_rinde.json");
 
-const DEFAULT_RATE = 742.23;
-
-// Relación EUR → USD.
-// 1 EUR = 1.065 USD
-const EUR_TO_USD_RATE = 1.065;
+/*
+ * TASAS DE RESPALDO
+ *
+ * Estas tasas solamente se utilizan si no existe información
+ * válida en la base de datos y la consulta externa no está disponible.
+ *
+ * NO se utiliza ninguna fórmula EUR = USD * factor.
+ */
+const DEFAULT_USD_RATE = 784.66;
+const DEFAULT_EUR_RATE = 916.00;
 
 interface Budget {
   id: number;
@@ -31,30 +36,21 @@ interface CartItem {
   name: string;
 
   /*
-   * El nombre histórico del campo es price_usd,
-   * pero representa el precio introducido por el usuario
-   * en la moneda seleccionada.
+   * Se conserva el nombre price_usd por compatibilidad
+   * con la aplicación existente.
    *
-   * currency determina si ese valor corresponde a USD o EUR.
+   * El valor representa realmente el precio ingresado
+   * en la moneda indicada por "currency".
    */
   price_usd: number;
 
   currency: Currency;
-
   quantity: number;
 
   /*
-   * Tasa efectiva Bs por unidad de la moneda seleccionada.
-   *
-   * USD -> Bs/USD
-   * EUR -> Bs/EUR
+   * Tasa BCV utilizada exactamente al agregar el producto.
    */
   rate_used: number;
-
-  /*
-   * Identifica qué moneda originó la tasa.
-   */
-  rate_type: "USD" | "EUR";
 
   created_at: string;
 }
@@ -63,17 +59,16 @@ interface HistoryRecord {
   id: number;
   user_id: string;
   date: string;
-
   total_bs: number;
   total_usd: number;
 
   /*
-   * Tasa efectiva correspondiente al primer producto
-   * de la compra.
+   * Para compras de una sola moneda representa la tasa
+   * aplicada a esa compra.
+   *
+   * Se mantiene por compatibilidad con HistoryScreen.
    */
   rate_used: number;
-
-  rate_type: "USD" | "EUR";
 
   budget_bs: number;
   remaining_bs: number;
@@ -86,6 +81,12 @@ interface HistoryRecord {
     quantity: number;
     subtotal_usd: number;
     subtotal_bs: number;
+
+    /*
+     * Nueva información: tasa exacta utilizada
+     * por este producto.
+     */
+    rate_used?: number;
   }>;
 
   created_at: string;
@@ -107,29 +108,48 @@ interface CommunityPriceGroup {
   product: string;
   city: string;
   state: string;
-
   lowest_price_usd: number;
   highest_price_usd: number;
   average_price_usd: number;
-
   lowest_price_bs: number;
   highest_price_bs: number;
   average_price_bs: number;
-
   reports: number;
   supermarkets: number;
   latest_report_at: string;
-
-  offers: Array<
-    CommunityPrice & {
-      is_lowest: boolean;
-    }
-  >;
+  offers: Array<CommunityPrice & {
+    is_lowest: boolean;
+  }>;
 }
 
+/*
+ * ============================================================
+ * TASAS DE CAMBIO
+ * ============================================================
+ *
+ * Antes:
+ *
+ *   rate_usd
+ *
+ * y EUR se calculaba:
+ *
+ *   USD * 1.065
+ *
+ * Eso era incorrecto.
+ *
+ * Ahora:
+ *
+ *   rate_usd = tasa oficial USD/Bs
+ *   rate_eur = tasa oficial EUR/Bs
+ *
+ * Ambas se obtienen independientemente.
+ */
 interface ExchangeRate {
   id: number;
+
   rate_usd: number;
+  rate_eur: number;
+
   rate_date: string;
   source: string;
   created_at: string;
@@ -148,15 +168,33 @@ interface DatabaseSchema {
   next_community_id: number;
 }
 
+interface LegacyExchangeRate {
+  id?: number;
+
+  /*
+   * Formato antiguo.
+   */
+  rate_usd?: number;
+
+  /*
+   * Formato nuevo.
+   */
+  rate_eur?: number;
+
+  rate_date?: string;
+  source?: string;
+  created_at?: string;
+}
+
 interface LegacyDatabaseSchema {
   budget?: Budget;
   budgets?: Budget[];
 
   cart_items?: CartItem[];
   shopping_history?: HistoryRecord[];
-
   community_prices?: CommunityPrice[];
-  exchange_rates?: ExchangeRate[];
+
+  exchange_rates?: LegacyExchangeRate[];
 
   next_budget_id?: number;
   next_cart_id?: number;
@@ -164,7 +202,15 @@ interface LegacyDatabaseSchema {
   next_community_id?: number;
 }
 
+/*
+ * ============================================================
+ * BASE DE DATOS
+ * ============================================================
+ */
+
 function createEmptyDatabase(): DatabaseSchema {
+  const now = new Date().toISOString();
+
   return {
     budgets: [],
     cart_items: [],
@@ -174,10 +220,11 @@ function createEmptyDatabase(): DatabaseSchema {
     exchange_rates: [
       {
         id: 1,
-        rate_usd: DEFAULT_RATE,
-        rate_date: new Date().toISOString().split("T")[0],
-        source: "Banco Central de Venezuela (BCV)",
-        created_at: new Date().toISOString(),
+        rate_usd: DEFAULT_USD_RATE,
+        rate_eur: DEFAULT_EUR_RATE,
+        rate_date: now.split("T")[0],
+        source: "DolarApi - Oficial",
+        created_at: now,
       },
     ],
 
@@ -197,59 +244,84 @@ function normalizeDatabase(
       ? [raw.budget]
       : [];
 
-  const cartItems: CartItem[] =
-    Array.isArray(raw.cart_items)
-      ? raw.cart_items.map(
-          (item): CartItem => ({
-            ...item,
+  const cartItems: CartItem[] = Array.isArray(
+    raw.cart_items
+  )
+    ? raw.cart_items.map(
+        (item): CartItem => ({
+          ...item,
+          currency:
+            item.currency === "EUR"
+              ? "EUR"
+              : "USD",
+        })
+      )
+    : [];
 
-            currency:
-              item.currency === "EUR"
-                ? "EUR"
-                : "USD",
-
-            rate_type:
-              item.rate_type === "EUR"
-                ? "EUR"
-                : "USD",
-          })
-        )
-      : [];
-
-  const history: HistoryRecord[] =
-    Array.isArray(raw.shopping_history)
-      ? raw.shopping_history.map(
-          (record): HistoryRecord => ({
-            ...record,
-
-            rate_type:
-              record.rate_type === "EUR"
-                ? "EUR"
-                : "USD",
-
-            items: record.items.map(
-              (item) => ({
-                ...item,
-
-                currency:
-                  item.currency === "EUR"
-                    ? "EUR"
-                    : "USD",
-              })
-            ),
-          })
-        )
-      : [];
+  const history = Array.isArray(
+    raw.shopping_history
+  )
+    ? raw.shopping_history
+    : [];
 
   const communityPrices =
     Array.isArray(raw.community_prices)
       ? raw.community_prices
       : [];
 
-  const exchangeRates =
-    Array.isArray(raw.exchange_rates) &&
-    raw.exchange_rates.length > 0
-      ? raw.exchange_rates
+  const rawRates = Array.isArray(
+    raw.exchange_rates
+  )
+    ? raw.exchange_rates
+    : [];
+
+  /*
+   * Compatibilidad con bases anteriores.
+   *
+   * IMPORTANTE:
+   * No calculamos EUR a partir de USD.
+   *
+   * Si un registro antiguo no tiene rate_eur,
+   * utilizamos el valor de respaldo hasta que
+   * refreshExchangeRates() actualice ambas tasas.
+   */
+  const exchangeRates: ExchangeRate[] =
+    rawRates.length > 0
+      ? rawRates.map((record, index) => ({
+          id:
+            record.id ??
+            index + 1,
+
+          rate_usd:
+            Number.isFinite(
+              Number(record.rate_usd)
+            ) &&
+            Number(record.rate_usd) > 0
+              ? Number(record.rate_usd)
+              : DEFAULT_USD_RATE,
+
+          rate_eur:
+            Number.isFinite(
+              Number(record.rate_eur)
+            ) &&
+            Number(record.rate_eur) > 0
+              ? Number(record.rate_eur)
+              : DEFAULT_EUR_RATE,
+
+          rate_date:
+            record.rate_date ||
+            new Date()
+              .toISOString()
+              .split("T")[0],
+
+          source:
+            record.source ||
+            "DolarApi - Oficial",
+
+          created_at:
+            record.created_at ||
+            new Date().toISOString(),
+        }))
       : createEmptyDatabase().exchange_rates;
 
   return {
@@ -304,11 +376,10 @@ function normalizeDatabase(
 function readDb(): DatabaseSchema {
   try {
     if (fs.existsSync(DB_FILE)) {
-      const data =
-        fs.readFileSync(
-          DB_FILE,
-          "utf-8"
-        );
+      const data = fs.readFileSync(
+        DB_FILE,
+        "utf-8"
+      );
 
       return normalizeDatabase(
         JSON.parse(data)
@@ -341,11 +412,18 @@ function writeDb(
   }
 }
 
+/*
+ * ============================================================
+ * USUARIO
+ * ============================================================
+ */
+
 function getUserId(
   req: Request
 ): string {
-  const header =
-    req.header("X-User-ID")?.trim();
+  const header = req
+    .header("X-User-ID")
+    ?.trim();
 
   if (!header) {
     return "user_default";
@@ -354,66 +432,104 @@ function getUserId(
   return header.slice(0, 200);
 }
 
-function getLatestRate(
+/*
+ * ============================================================
+ * TASAS
+ * ============================================================
+ */
+
+function getLatestExchangeRate(
+  db: DatabaseSchema
+): ExchangeRate {
+  const rates = db.exchange_rates;
+
+  if (
+    rates.length === 0
+  ) {
+    return createEmptyDatabase()
+      .exchange_rates[0];
+  }
+
+  return rates[rates.length - 1];
+}
+
+function getLatestUsdRate(
   db: DatabaseSchema
 ): number {
   return (
-    db.exchange_rates[
-      db.exchange_rates.length - 1
-    ]?.rate_usd ||
-    DEFAULT_RATE
+    getLatestExchangeRate(db)
+      .rate_usd ||
+    DEFAULT_USD_RATE
+  );
+}
+
+function getLatestEurRate(
+  db: DatabaseSchema
+): number {
+  return (
+    getLatestExchangeRate(db)
+      .rate_eur ||
+    DEFAULT_EUR_RATE
   );
 }
 
 /*
- * Obtiene la tasa efectiva Bs por unidad
- * de la moneda seleccionada.
+ * Tasa activa del presupuesto.
  *
- * USD:
- *   USD -> Bs
+ * El presupuesto mantiene su comportamiento original:
+ * "bcv" utiliza la tasa USD como referencia interna.
  *
- * EUR:
- *   EUR -> USD -> Bs
+ * La moneda concreta de cada producto se determina
+ * mediante getCurrencyRate().
+ */
+function getActiveRate(
+  db: DatabaseSchema,
+  budget: Budget
+): number {
+  return budget.tipo_tasa === "custom"
+    ? budget.tasa_custom
+    : getLatestUsdRate(db);
+}
+
+/*
+ * Obtiene la tasa correcta para la moneda del producto.
  *
- * Por lo tanto:
+ * ESTA ES LA CORRECCIÓN PRINCIPAL.
  *
- * EUR/Bs =
- * USD/Bs × EUR/USD
+ * USD -> rate_usd
+ * EUR -> rate_eur
+ *
+ * Nunca:
+ *
+ * EUR = USD * 1.065
  */
 function getCurrencyRate(
   db: DatabaseSchema,
   budget: Budget,
   currency: Currency
-): {
-  rate_bs: number;
-  rate_type: "USD" | "EUR";
-} {
-  const baseRate =
-    getActiveRate(
-      db,
-      budget
-    );
-
-  if (currency === "EUR") {
-    const eurToBs =
-      baseRate *
-      EUR_TO_USD_RATE;
-
-    return {
-      rate_bs:
-        Math.round(
-          eurToBs * 100
-        ) / 100,
-
-      rate_type: "EUR",
-    };
+): number {
+  /*
+   * Para una tasa personalizada se conserva
+   * el comportamiento anterior.
+   */
+  if (
+    budget.tipo_tasa === "custom"
+  ) {
+    return budget.tasa_custom;
   }
 
-  return {
-    rate_bs: baseRate,
-    rate_type: "USD",
-  };
+  if (currency === "EUR") {
+    return getLatestEurRate(db);
+  }
+
+  return getLatestUsdRate(db);
 }
+
+/*
+ * ============================================================
+ * PRESUPUESTO
+ * ============================================================
+ */
 
 function createBudget(
   db: DatabaseSchema,
@@ -421,14 +537,13 @@ function createBudget(
 ): Budget {
   const budget: Budget = {
     id: db.next_budget_id++,
-
     user_id: userId,
 
     monto_bs: 0,
 
     tipo_tasa: "bcv",
 
-    tasa_custom: DEFAULT_RATE,
+    tasa_custom: DEFAULT_USD_RATE,
 
     spent_bs: 0,
 
@@ -450,22 +565,15 @@ function getOrCreateBudget(
       (budget) =>
         budget.user_id === userId
     ) ||
-    createBudget(
-      db,
-      userId
-    )
+    createBudget(db, userId)
   );
 }
 
-function getActiveRate(
-  db: DatabaseSchema,
-  budget: Budget
-): number {
-  return budget.tipo_tasa ===
-    "custom"
-    ? budget.tasa_custom
-    : getLatestRate(db);
-}
+/*
+ * ============================================================
+ * CARRITO
+ * ============================================================
+ */
 
 function getUserCart(
   db: DatabaseSchema,
@@ -477,34 +585,13 @@ function getUserCart(
   );
 }
 
-/*
- * Recalcula el gasto usando la tasa
- * que quedó guardada en cada producto.
- *
- * Esto es MUY importante:
- *
- * Si un producto fue agregado en EUR,
- * no volvemos a convertirlo utilizando
- * la tasa USD del momento.
- *
- * Se utiliza item.rate_used.
- */
 function recalculateSpentBs(
   db: DatabaseSchema,
   userId: string,
   budget: Budget
 ): number {
-  const activeRate =
-    getActiveRate(
-      db,
-      budget
-    );
-
   const totalBs =
-    getUserCart(
-      db,
-      userId
-    ).reduce(
+    getUserCart(db, userId).reduce(
       (acc, item) => {
         const rate =
           item.rate_used ||
@@ -512,7 +599,7 @@ function recalculateSpentBs(
             db,
             budget,
             item.currency
-          ).rate_bs;
+          );
 
         return (
           acc +
@@ -549,40 +636,49 @@ function buildBudgetResponse(
     Math.max(
       0,
       Math.round(
-        (budget.monto_bs -
-          budget.spent_bs) *
-          100
+        (
+          budget.monto_bs -
+          budget.spent_bs
+        ) * 100
       ) / 100
     );
+
+  const safeRate =
+    activeRate > 0
+      ? activeRate
+      : DEFAULT_USD_RATE;
 
   return {
     ...budget,
 
     active_rate:
-      activeRate,
+      safeRate,
 
     remaining_bs:
       remainingBs,
 
     budget_usd:
       Math.round(
-        (budget.monto_bs /
-          activeRate) *
-          100
+        (
+          budget.monto_bs /
+          safeRate
+        ) * 100
       ) / 100,
 
     spent_usd:
       Math.round(
-        (budget.spent_bs /
-          activeRate) *
-          100
+        (
+          budget.spent_bs /
+          safeRate
+        ) * 100
       ) / 100,
 
     remaining_usd:
       Math.round(
-        (remainingBs /
-          activeRate) *
-          100
+        (
+          remainingBs /
+          safeRate
+        ) * 100
       ) / 100,
 
     percentage_remaining:
@@ -590,15 +686,24 @@ function buildBudgetResponse(
         ? Math.max(
             0,
             Math.round(
-              ((budget.monto_bs -
-                budget.spent_bs) /
-                budget.monto_bs) *
-                100
+              (
+                (
+                  budget.monto_bs -
+                  budget.spent_bs
+                ) /
+                budget.monto_bs
+              ) * 100
             )
           )
         : 0,
   };
 }
+
+/*
+ * ============================================================
+ * UTILIDADES
+ * ============================================================
+ */
 
 function roundMoney(
   value: number
@@ -615,9 +720,7 @@ function normalizeProductKey(
 ): string {
   return product
     .trim()
-    .toLocaleLowerCase(
-      "es-VE"
-    )
+    .toLocaleLowerCase("es-VE")
     .normalize("NFD")
     .replace(
       /[\u0300-\u036f]/g,
@@ -633,6 +736,12 @@ function normalizeProductKey(
     )
     .trim();
 }
+
+/*
+ * ============================================================
+ * PRECIOS COMUNITARIOS
+ * ============================================================
+ */
 
 function groupCommunityPrices(
   prices: CommunityPrice[]
@@ -711,14 +820,16 @@ function groupCommunityPrices(
     const usdTotal =
       group.reduce(
         (sum, price) =>
-          sum + price.price_usd,
+          sum +
+          price.price_usd,
         0
       );
 
     const bsTotal =
       group.reduce(
         (sum, price) =>
-          sum + price.price_bs,
+          sum +
+          price.price_bs,
         0
       );
 
@@ -833,9 +944,40 @@ function groupCommunityPrices(
   });
 }
 
-async function scrapeBcvRate(): Promise<
-  number | null
-> {
+/*
+ * ============================================================
+ * CONSULTA AL BCV
+ * ============================================================
+ *
+ * DolarApi dispone de endpoints independientes:
+ *
+ * USD:
+ * /v1/dolares/oficial
+ *
+ * EUR:
+ * /v1/euros/oficial
+ *
+ * Por lo tanto ya NO hacemos:
+ *
+ * EUR = USD * 1.065
+ *
+ * Las dos tasas se consultan independientemente.
+ */
+
+interface DolarApiResponse {
+  promedio?: number;
+  compra?: number;
+  venta?: number;
+  fechaActualizacion?: string;
+  moneda?: string;
+  fuente?: string;
+  nombre?: string;
+}
+
+async function fetchJsonWithTimeout(
+  url: string,
+  timeoutMs = 10000
+): Promise<DolarApiResponse> {
   const controller =
     new AbortController();
 
@@ -843,69 +985,199 @@ async function scrapeBcvRate(): Promise<
     setTimeout(
       () =>
         controller.abort(),
-      10000
+      timeoutMs
     );
 
   try {
-    const res =
-      await fetch(
-        "https://ve.dolarapi.com/v1/dolares/oficial",
-        {
-          signal:
-            controller.signal,
+    const response =
+      await fetch(url, {
+        signal:
+          controller.signal,
 
-          headers: {
-            Accept:
-              "application/json",
-          },
-        }
-      );
+        headers: {
+          Accept:
+            "application/json",
+        },
+      });
 
-    if (!res.ok) {
+    if (!response.ok) {
       throw new Error(
-        `DolarApi respondió con estado ${res.status}`
+        `DolarApi respondió con estado ${response.status}`
       );
     }
 
-    const data =
-      (await res.json()) as {
-        promedio?: number;
-      };
+    return (await response.json()) as DolarApiResponse;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
-    const rate =
+async function scrapeBcvRates(): Promise<{
+  usd: number | null;
+  eur: number | null;
+}> {
+  const usdUrl =
+    "https://ve.dolarapi.com/v1/dolares/oficial";
+
+  const eurUrl =
+    "https://ve.dolarapi.com/v1/euros/oficial";
+
+  const [usdResult, eurResult] =
+    await Promise.allSettled([
+      fetchJsonWithTimeout(
+        usdUrl
+      ),
+
+      fetchJsonWithTimeout(
+        eurUrl
+      ),
+    ]);
+
+  let usd: number | null =
+    null;
+
+  let eur: number | null =
+    null;
+
+  /*
+   * USD
+   */
+  if (
+    usdResult.status ===
+    "fulfilled"
+  ) {
+    const value =
       Number(
-        data.promedio
+        usdResult.value
+          .promedio
       );
 
     if (
-      !Number.isFinite(
-        rate
-      ) ||
-      rate <= 0
+      Number.isFinite(value) &&
+      value > 0
     ) {
-      throw new Error(
-        "La API devolvió una tasa inválida"
-      );
+      usd =
+        Math.round(
+          value * 100
+        ) / 100;
     }
-
-    return (
-      Math.round(
-        rate * 100
-      ) / 100
-    );
-  } catch (error) {
+  } else {
     console.error(
-      "Error al consultar la tasa oficial:",
-      error
-    );
-
-    return null;
-  } finally {
-    clearTimeout(
-      timeout
+      "Error consultando tasa USD:",
+      usdResult.reason
     );
   }
+
+  /*
+   * EUR
+   */
+  if (
+    eurResult.status ===
+    "fulfilled"
+  ) {
+    const value =
+      Number(
+        eurResult.value
+          .promedio
+      );
+
+    if (
+      Number.isFinite(value) &&
+      value > 0
+    ) {
+      eur =
+        Math.round(
+          value * 100
+        ) / 100;
+    }
+  } else {
+    console.error(
+      "Error consultando tasa EUR:",
+      eurResult.reason
+    );
+  }
+
+  return {
+    usd,
+    eur,
+  };
 }
+
+/*
+ * Consulta DolarApi y guarda UNA sola entrada con las dos monedas.
+ *
+ * Esto evita el problema que ocurría al arrancar la aplicación:
+ * el frontend podía leer primero una tasa EUR antigua (por ejemplo
+ * 835.66) y solamente después terminar la actualización en segundo
+ * plano.
+ *
+ * Cada consulta pública puede pedir una actualización fresca.
+ */
+async function refreshAndStoreRates(
+  db: DatabaseSchema
+): Promise<ExchangeRate> {
+  const scraped = await scrapeBcvRates();
+  const previous = getLatestExchangeRate(db);
+
+  const usd =
+    scraped.usd ??
+    previous.rate_usd ??
+    DEFAULT_USD_RATE;
+
+  const eur =
+    scraped.eur ??
+    previous.rate_eur ??
+    DEFAULT_EUR_RATE;
+
+  const now = new Date();
+
+  const rateEntry: ExchangeRate = {
+    id:
+      Math.max(
+        0,
+        ...db.exchange_rates.map(
+          (record) => record.id || 0
+        )
+      ) + 1,
+
+    rate_usd: usd,
+    rate_eur: eur,
+
+    rate_date: now
+      .toISOString()
+      .split("T")[0],
+
+    source: "DolarApi - Oficial",
+    created_at: now.toISOString(),
+  };
+
+  /*
+   * Solo guardamos una nueva entrada cuando DolarApi respondió
+   * al menos una de las dos monedas. Si ambas consultas fallan,
+   * no fabricamos una actualización falsa.
+   */
+  if (
+    scraped.usd !== null ||
+    scraped.eur !== null
+  ) {
+    db.exchange_rates.push(rateEntry);
+    writeDb(db);
+
+    console.log(
+      `Tasas DolarApi actualizadas: USD Bs ${rateEntry.rate_usd} | EUR Bs ${rateEntry.rate_eur}`
+    );
+
+    return rateEntry;
+  }
+
+  return previous;
+}
+
+/*
+ * ============================================================
+ * SERVIDOR
+ * ============================================================
+ */
 
 async function startServer() {
   const app =
@@ -934,9 +1206,11 @@ async function startServer() {
     express.json()
   );
 
-  // ==================================================
-  // PRESUPUESTO
-  // ==================================================
+  /*
+   * ==========================================================
+   * PRESUPUESTO
+   * ==========================================================
+   */
 
   app.get(
     [
@@ -1011,10 +1285,8 @@ async function startServer() {
       }
 
       if (
-        tipo_tasa ===
-          "bcv" ||
-        tipo_tasa ===
-          "custom"
+        tipo_tasa === "bcv" ||
+        tipo_tasa === "custom"
       ) {
         budget.tipo_tasa =
           tipo_tasa;
@@ -1028,7 +1300,7 @@ async function startServer() {
           Number.parseFloat(
             tasa_custom
           ) ||
-          getLatestRate(
+          getLatestUsdRate(
             db
           );
       }
@@ -1056,9 +1328,11 @@ async function startServer() {
     }
   );
 
-  // ==================================================
-  // CARRITO - OBTENER
-  // ==================================================
+  /*
+   * ==========================================================
+   * CARRITO
+   * ==========================================================
+   */
 
   app.get(
     [
@@ -1078,109 +1352,85 @@ async function startServer() {
           userId
         );
 
-      const activeRate =
-        getActiveRate(
-          db,
-          budget
-        );
-
       const items =
         getUserCart(
           db,
           userId
-        ).map(
-          (item) => {
-            /*
-             * MUY IMPORTANTE:
-             *
-             * No usamos la tasa USD
-             * para todos los productos.
-             *
-             * Cada producto conserva
-             * su tasa efectiva.
-             */
-            const rate =
-              item.rate_used ||
-              getCurrencyRate(
-                db,
-                budget,
-                item.currency
-              ).rate_bs;
+        ).map((item) => {
+          /*
+           * MUY IMPORTANTE:
+           *
+           * Se utiliza rate_used guardado en el producto.
+           *
+           * Así una compra EUR no vuelve a utilizar
+           * la tasa USD actual.
+           */
+          const rate =
+            item.rate_used ||
+            getCurrencyRate(
+              db,
+              budget,
+              item.currency
+            );
 
-            const priceBs =
-              Math.round(
-                item.price_usd *
-                  rate *
-                  100
-              ) / 100;
+          const priceBs =
+            roundMoney(
+              item.price_usd *
+                rate
+            );
 
-            const subtotalUsd =
-              Math.round(
-                item.price_usd *
-                  item.quantity *
-                  100
-              ) / 100;
+          const subtotalUsd =
+            roundMoney(
+              item.price_usd *
+                item.quantity
+            );
 
-            const subtotalBs =
-              Math.round(
-                priceBs *
-                  item.quantity *
-                  100
-              ) / 100;
+          const subtotalBs =
+            roundMoney(
+              priceBs *
+                item.quantity
+            );
 
-            return {
-              ...item,
+          return {
+            ...item,
 
-              currency:
-                item.currency ||
-                "USD",
+            currency:
+              item.currency ||
+              "USD",
 
-              rate_used:
-                rate,
+            price_bs:
+              priceBs,
 
-              rate_type:
-                item.currency ===
-                "EUR"
-                  ? "EUR"
-                  : "USD",
+            subtotal_usd:
+              subtotalUsd,
 
-              price_bs:
-                priceBs,
+            subtotal_bs:
+              subtotalBs,
 
-              subtotal_usd:
-                subtotalUsd,
-
-              subtotal_bs:
-                subtotalBs,
-            };
-          }
-        );
+            rate_used:
+              rate,
+          };
+        });
 
       const totalUsd =
-        Math.round(
+        roundMoney(
           items.reduce(
-            (
-              sum,
-              item
-            ) =>
+            (sum, item) =>
               sum +
               item.subtotal_usd,
             0
-          ) * 100
-        ) / 100;
+          )
+        );
 
       const totalBs =
-        Math.round(
+        roundMoney(
           items.reduce(
-            (
-              sum,
-              item
-            ) =>
+            (sum, item) =>
               sum +
               item.subtotal_bs,
             0
-          ) * 100
-        ) / 100;
+          )
+        );
 
       budget.spent_bs =
         totalBs;
@@ -1188,28 +1438,27 @@ async function startServer() {
       writeDb(db);
 
       /*
-       * Si el carrito contiene productos,
-       * active_rate representa la tasa efectiva
-       * del primer producto.
+       * Para compatibilidad con el frontend:
        *
-       * La interfaz puede mostrar además
-       * la tasa específica de cada producto.
+       * active_rate representa la tasa del primer
+       * producto si existe.
+       *
+       * En una compra normal todos los productos
+       * utilizan la misma moneda seleccionada.
        */
-      const cartActiveRate =
-        items.length > 0
-          ? items[0]
-              .rate_used
-          : activeRate;
+      const activeRate =
+        items[0]?.rate_used ||
+        getActiveRate(
+          db,
+          budget
+        );
 
       res.json({
         items,
 
         total_items:
           items.reduce(
-            (
-              sum,
-              item
-            ) =>
+            (sum, item) =>
               sum +
               item.quantity,
             0
@@ -1222,24 +1471,19 @@ async function startServer() {
           totalBs,
 
         active_rate:
-          cartActiveRate,
+          activeRate,
 
         remaining_bs:
           Math.max(
             0,
-            Math.round(
-              (budget.monto_bs -
-                totalBs) *
-                100
-            ) / 100
+            roundMoney(
+              budget.monto_bs -
+                totalBs
+            )
           ),
       });
     }
   );
-
-  // ==================================================
-  // CARRITO - AGREGAR
-  // ==================================================
 
   app.post(
     [
@@ -1266,40 +1510,25 @@ async function startServer() {
         currency,
       } = req.body;
 
-      /*
-       * Normalizamos la moneda.
-       *
-       * Solo existen:
-       * USD
-       * EUR
-       */
       const selectedCurrency: Currency =
-        currency ===
-        "EUR"
+        currency === "EUR"
           ? "EUR"
           : "USD";
 
       /*
-       * AQUÍ está uno de los puntos
-       * fundamentales de la corrección.
+       * AQUÍ SE CAPTURA LA TASA CORRECTA.
        *
-       * Para EUR:
-       *
-       * EUR -> USD -> Bs
-       *
-       * Para USD:
-       *
-       * USD -> Bs
+       * EUR -> rate_eur
+       * USD -> rate_usd
        */
-      const rateInfo =
+      const rateUsed =
         getCurrencyRate(
           db,
           budget,
           selectedCurrency
         );
 
-      const newItem:
-        CartItem = {
+      const newItem: CartItem = {
         id:
           db.next_cart_id++,
 
@@ -1310,13 +1539,6 @@ async function startServer() {
           name?.trim() ||
           "Producto sin nombre",
 
-        /*
-         * Conservamos el valor
-         * introducido por el usuario.
-         *
-         * currency indica si es
-         * USD o EUR.
-         */
         price_usd:
           Number.parseFloat(
             price_usd
@@ -1334,18 +1556,8 @@ async function startServer() {
             ) || 1
           ),
 
-        /*
-         * Para USD:
-         * Bs/USD
-         *
-         * Para EUR:
-         * Bs/EUR
-         */
         rate_used:
-          rateInfo.rate_bs,
-
-        rate_type:
-          rateInfo.rate_type,
+          rateUsed,
 
         created_at:
           new Date().toISOString(),
@@ -1369,10 +1581,6 @@ async function startServer() {
       });
     }
   );
-
-  // ==================================================
-  // CARRITO - ACTUALIZAR CANTIDAD
-  // ==================================================
 
   app.put(
     [
@@ -1411,12 +1619,12 @@ async function startServer() {
         );
 
       if (!item) {
-        return res.status(
-          404
-        ).json({
-          error:
-            "Producto no encontrado",
-        });
+        return res
+          .status(404)
+          .json({
+            error:
+              "Producto no encontrado",
+          });
       }
 
       item.quantity =
@@ -1442,10 +1650,6 @@ async function startServer() {
       });
     }
   );
-
-  // ==================================================
-  // CARRITO - ELIMINAR PRODUCTO
-  // ==================================================
 
   app.delete(
     [
@@ -1510,10 +1714,6 @@ async function startServer() {
     }
   );
 
-  // ==================================================
-  // CARRITO - VACIAR
-  // ==================================================
-
   app.delete(
     [
       "/app-api/cart",
@@ -1553,9 +1753,11 @@ async function startServer() {
     }
   );
 
-  // ==================================================
-  // CHECKOUT
-  // ==================================================
+  /*
+   * ==========================================================
+   * CHECKOUT
+   * ==========================================================
+   */
 
   app.post(
     [
@@ -1594,33 +1796,7 @@ async function startServer() {
       }
 
       /*
-       * Conservamos en Historial
-       * la tasa efectiva del primer
-       * producto.
-       *
-       * Si es EUR, será Bs/EUR.
-       *
-       * Si es USD, será Bs/USD.
-       */
-      const firstItem =
-        cartItems[0];
-
-      const historyRate =
-        firstItem.rate_used ||
-        getCurrencyRate(
-          db,
-          budget,
-          firstItem.currency
-        ).rate_bs;
-
-      const historyRateType:
-        "USD" | "EUR" =
-        firstItem.rate_type ||
-        firstItem.currency;
-
-      /*
-       * Cada producto conserva
-       * su propia tasa.
+       * Cada producto conserva su propia tasa.
        */
       const items =
         cartItems.map(
@@ -1631,28 +1807,25 @@ async function startServer() {
                 db,
                 budget,
                 item.currency
-              ).rate_bs;
+              );
 
             const priceBs =
-              Math.round(
+              roundMoney(
                 item.price_usd *
-                  rate *
-                  100
-              ) / 100;
+                  rate
+              );
 
             const subtotalUsd =
-              Math.round(
+              roundMoney(
                 item.price_usd *
-                  item.quantity *
-                  100
-              ) / 100;
+                  item.quantity
+              );
 
             const subtotalBs =
-              Math.round(
+              roundMoney(
                 priceBs *
-                  item.quantity *
-                  100
-              ) / 100;
+                  item.quantity
+              );
 
             return {
               name:
@@ -1676,48 +1849,59 @@ async function startServer() {
 
               subtotal_bs:
                 subtotalBs,
+
+              rate_used:
+                rate,
             };
           }
         );
 
       const totalUsd =
-        Math.round(
+        roundMoney(
           items.reduce(
-            (
-              sum,
-              item
-            ) =>
+            (sum, item) =>
               sum +
               item.subtotal_usd,
             0
-          ) * 100
-        ) / 100;
+          )
+        );
 
       const totalBs =
-        Math.round(
+        roundMoney(
           items.reduce(
-            (
-              sum,
-              item
-            ) =>
+            (sum, item) =>
               sum +
               item.subtotal_bs,
             0
-          ) * 100
-        ) / 100;
+          )
+        );
 
       const remainingBs =
         Math.max(
           0,
-          Math.round(
-            (budget.monto_bs -
-              totalBs) *
-              100
-          ) / 100
+          roundMoney(
+            budget.monto_bs -
+              totalBs
+          )
         );
 
       const checkoutAt =
         new Date().toISOString();
+
+      /*
+       * Para una compra normal de una sola moneda,
+       * esta será exactamente la tasa utilizada.
+       *
+       * Si posteriormente se permitieran productos
+       * mezclados USD/EUR, cada item conserva además
+       * su propia rate_used.
+       */
+      const historyRate =
+        items[0]?.rate_used ||
+        getActiveRate(
+          db,
+          budget
+        );
 
       const record:
         HistoryRecord = {
@@ -1738,9 +1922,6 @@ async function startServer() {
 
         rate_used:
           historyRate,
-
-        rate_type:
-          historyRateType,
 
         budget_bs:
           budget.monto_bs,
@@ -1790,9 +1971,11 @@ async function startServer() {
     }
   );
 
-  // ==================================================
-  // HISTORIAL
-  // ==================================================
+  /*
+   * ==========================================================
+   * HISTORIAL
+   * ==========================================================
+   */
 
   app.get(
     [
@@ -1829,9 +2012,11 @@ async function startServer() {
     }
   );
 
-  // ==================================================
-  // PRECIOS COMUNITARIOS
-  // ==================================================
+  /*
+   * ==========================================================
+   * PRECIOS COMUNITARIOS
+   * ==========================================================
+   */
 
   app.get(
     [
@@ -1867,9 +2052,7 @@ async function startServer() {
         );
 
       let prices =
-        [
-          ...db.community_prices,
-        ];
+        [...db.community_prices];
 
       if (product) {
         prices =
@@ -1943,10 +2126,6 @@ async function startServer() {
     }
   );
 
-  // ==================================================
-  // PRECIOS COMUNITARIOS AGRUPADOS
-  // ==================================================
-
   app.get(
     [
       "/app-api/community-prices/grouped",
@@ -1987,9 +2166,7 @@ async function startServer() {
         );
 
       let prices =
-        [
-          ...db.community_prices,
-        ];
+        [...db.community_prices];
 
       if (product) {
         prices =
@@ -2068,10 +2245,6 @@ async function startServer() {
     }
   );
 
-  // ==================================================
-  // COMPARTIR PRECIO
-  // ==================================================
-
   app.post(
     [
       "/app-api/community-prices",
@@ -2095,8 +2268,12 @@ async function startServer() {
           price_usd
         ) || 0;
 
+      /*
+       * Los precios comunitarios continúan utilizando
+       * la tasa USD, tal como funcionaba anteriormente.
+       */
       const activeRate =
-        getLatestRate(
+        getLatestUsdRate(
           db
         );
 
@@ -2113,11 +2290,10 @@ async function startServer() {
           priceUsd,
 
         price_bs:
-          Math.round(
+          roundMoney(
             priceUsd *
-              activeRate *
-              100
-          ) / 100,
+              activeRate
+          ),
 
         supermarket:
           supermarket?.trim() ||
@@ -2147,52 +2323,148 @@ async function startServer() {
 
       res.json({
         success: true,
-        price:
-          newPrice,
+        price: newPrice,
       });
     }
   );
 
-  // ==================================================
-  // TASA DE CAMBIO PÚBLICA
-  // ==================================================
+  /*
+   * ==========================================================
+   * TASA DE CAMBIO - CONSULTA PÚBLICA
+   * ==========================================================
+   *
+   * Compatibilidad:
+   *
+   * GET /exchange-rate-public
+   * GET /exchange-rate-public?currency=USD
+   * GET /exchange-rate-public?currency=EUR
+   *
+   * La respuesta incluye ambas tasas.
+   *
+   * "rate" corresponde a la moneda solicitada.
+   */
 
   app.get(
     [
       "/app-api/exchange-rate-public",
       "/api/exchange-rate-public",
     ],
-    (req, res) => {
-      const db =
-        readDb();
+    async (req, res) => {
+      try {
+        const db = readDb();
 
-      const latestRateRecord =
-        db.exchange_rates[
-          db.exchange_rates.length -
-            1
-        ] ||
-        createEmptyDatabase()
-          .exchange_rates[0];
+        /*
+         * IMPORTANTE:
+         *
+         * No devolvemos directamente el último registro guardado.
+         * Al abrir Rinde+ podía existir una tasa EUR antigua en
+         * db_rinde.json y el frontend la recibía antes de que la
+         * actualización automática terminara.
+         *
+         * Ahora la consulta pública actualiza primero USD y EUR
+         * desde DolarApi - Oficial y luego responde.
+         */
+        const latest =
+          await refreshAndStoreRates(db);
 
-      res.json({
-        rate:
-          latestRateRecord.rate_usd,
+        const requestedCurrency =
+          String(
+            req.query.currency ||
+              "USD"
+          ).toUpperCase();
 
-        date:
-          latestRateRecord.rate_date,
+        const currency: Currency =
+          requestedCurrency === "EUR"
+            ? "EUR"
+            : "USD";
 
-        source:
-          latestRateRecord.source,
+        const selectedRate =
+          currency === "EUR"
+            ? latest.rate_eur
+            : latest.rate_usd;
 
-        last_updated:
-          latestRateRecord.created_at,
-      });
+        res.setHeader(
+          "Cache-Control",
+          "no-store, no-cache, must-revalidate, proxy-revalidate"
+        );
+
+        return res.json({
+          success: true,
+
+          /* Tasa correspondiente a la moneda solicitada. */
+          rate: selectedRate,
+
+          /* Ambas tasas para las versiones nuevas de api.ts. */
+          rate_usd: latest.rate_usd,
+          rate_eur: latest.rate_eur,
+
+          usd: latest.rate_usd,
+          eur: latest.rate_eur,
+
+          currency,
+          date: latest.rate_date,
+          source: latest.source,
+          last_updated: latest.created_at,
+        });
+      } catch (error) {
+        console.error(
+          "Error obteniendo tasas desde DolarApi:",
+          error
+        );
+
+        /*
+         * Si DolarApi no responde, devolvemos la última tasa
+         * persistida para que la aplicación siga funcionando.
+         */
+        const db = readDb();
+        const latest =
+          getLatestExchangeRate(db);
+
+        const requestedCurrency =
+          String(
+            req.query.currency ||
+              "USD"
+          ).toUpperCase();
+
+        const currency: Currency =
+          requestedCurrency === "EUR"
+            ? "EUR"
+            : "USD";
+
+        const selectedRate =
+          currency === "EUR"
+            ? latest.rate_eur
+            : latest.rate_usd;
+
+        res.setHeader(
+          "Cache-Control",
+          "no-store"
+        );
+
+        return res.json({
+          success: false,
+          rate: selectedRate,
+          rate_usd: latest.rate_usd,
+          rate_eur: latest.rate_eur,
+          usd: latest.rate_usd,
+          eur: latest.rate_eur,
+          currency,
+          date: latest.rate_date,
+          source: latest.source,
+          last_updated: latest.created_at,
+          fallback: true,
+        });
+      }
     }
   );
 
-  // ==================================================
-  // ACTUALIZAR TASA BCV
-  // ==================================================
+  /*
+   * ==========================================================
+   * ACTUALIZAR TASAS BCV
+   * ==========================================================
+   *
+   * Obtiene USD y EUR INDEPENDIENTEMENTE.
+   */
 
   app.post(
     [
@@ -2200,77 +2472,87 @@ async function startServer() {
       "/api/exchange-rate/fetch",
     ],
     async (req, res) => {
-      const db =
-        readDb();
+      try {
+        const db = readDb();
+        const latest =
+          await refreshAndStoreRates(db);
 
-      const scraped =
-        await scrapeBcvRate();
-
-      if (scraped) {
-        const rateEntry:
-          ExchangeRate = {
-          id:
-            Math.max(
-              0,
-              ...db.exchange_rates.map(
-                (record) =>
-                  record.id || 0
-              )
-            ) + 1,
-
-          rate_usd:
-            scraped,
-
-          rate_date:
-            new Date()
-              .toISOString()
-              .split("T")[0],
-
-          source:
-            "DolarApi - Oficial",
-
-          created_at:
-            new Date().toISOString(),
-        };
-
-        db.exchange_rates.push(
-          rateEntry
+        res.setHeader(
+          "Cache-Control",
+          "no-store"
         );
 
-        writeDb(db);
+        return res.json({
+          success: true,
+          rate: latest.rate_usd,
+          rate_usd: latest.rate_usd,
+          rate_eur: latest.rate_eur,
+          usd: latest.rate_usd,
+          eur: latest.rate_eur,
+          date: latest.rate_date,
+          source: latest.source,
+        });
+      } catch (error) {
+        console.error(
+          "Error actualizando tasas desde DolarApi:",
+          error
+        );
+
+        const db = readDb();
+        const latest =
+          getLatestExchangeRate(db);
+
+        return res.status(503).json({
+          success: false,
+          error:
+            "No fue posible actualizar las tasas desde DolarApi.",
+          rate: latest.rate_usd,
+          rate_usd: latest.rate_usd,
+          rate_eur: latest.rate_eur,
+          usd: latest.rate_usd,
+          eur: latest.rate_eur,
+          date: latest.rate_date,
+          source: latest.source,
+        });
       }
-
-      const latestRate =
-        db.exchange_rates[
-          db.exchange_rates.length -
-            1
-        ] ||
-        createEmptyDatabase()
-          .exchange_rates[0];
-
-      res.json({
-        success: true,
-
-        scraped:
-          Boolean(
-            scraped
-          ),
-
-        rate:
-          latestRate.rate_usd,
-
-        date:
-          latestRate.rate_date,
-
-        source:
-          latestRate.source,
-      });
     }
   );
 
-  // ==================================================
-  // VITE / PRODUCCIÓN
-  // ==================================================
+  /*
+   * ==========================================================
+   * ACTUALIZACIÓN AUTOMÁTICA INICIAL
+   * ==========================================================
+   *
+   * Se ejecuta en segundo plano.
+   *
+   * NO bloquea el arranque del servidor.
+   *
+   * Esto permite que, al arrancar Rinde+, el servidor
+   * pueda actualizar USD y EUR sin obligar a la interfaz
+   * a esperar.
+   */
+
+  void (async () => {
+    try {
+      console.log(
+        "Actualizando tasas DolarApi USD/EUR en segundo plano..."
+      );
+
+      const db = readDb();
+      await refreshAndStoreRates(db);
+    } catch (error) {
+      console.error(
+        "Error en actualización automática de tasas DolarApi:",
+        error
+      );
+    }
+  })();
+
+  /*
+   * ==========================================================
+   * VITE / PRODUCCIÓN
+   * ==========================================================
+   */
 
   if (
     process.env.NODE_ENV !==

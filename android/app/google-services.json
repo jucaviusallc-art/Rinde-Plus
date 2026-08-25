@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "800458362902",
+    "project_id": "rinde-f7a8f",
+    "storage_bucket": "rinde-f7a8f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:800458362902:android:0c3370a2c3ea5ef9c52537",
+        "android_client_info": {
+          "package_name": "com.jucavi.rindemas"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCSVZbCbaoSWiulfN93gmU5qTNZIltxH7g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

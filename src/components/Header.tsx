@@ -6,6 +6,7 @@ import {
   ShoppingCart,
   TrendingUp,
 } from "lucide-react";
+
 import {
   Budget,
   ExchangeRateInfo,
@@ -24,14 +25,13 @@ interface HeaderProps {
   onRefreshRate: () => void;
   isRefreshingRate: boolean;
   monedaSeleccionada: Currency;
-  selectedRate: number;
+  selectedRate: number | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   currentScreen,
   onNavigate,
   budget,
-  rateInfo,
   cartCount,
   isDarkMode,
   onToggleDarkMode,
@@ -41,20 +41,35 @@ export const Header: React.FC<HeaderProps> = ({
   selectedRate,
 }) => {
   /*
-   * La tasa mostrada debe corresponder a la moneda
-   * actualmente seleccionada en Rinde+.
+   * ============================================================
+   * TASA ACTIVA
+   * ============================================================
    *
-   * App.tsx envía selectedRate como la tasa activa.
-   * Si por alguna razón no está disponible, usamos
-   * las tasas existentes como respaldo.
+   * IMPORTANTE:
+   *
+   * Header NO consulta ninguna tasa y NO decide qué tasa utilizar.
+   *
+   * App.tsx es quien determina la tasa correspondiente a la
+   * moneda seleccionada y la entrega mediante selectedRate.
+   *
+   * Esto evita que una tasa USD guardada en budget.active_rate
+   * pueda reemplazar accidentalmente la tasa EUR seleccionada.
    */
-  const activeRate =
-    selectedRate > 0
-      ? selectedRate
-      : budget?.active_rate || rateInfo?.rate || 0;
 
+  const activeRate =
+    typeof selectedRate === "number" && Number.isFinite(selectedRate)
+      ? selectedRate
+      : 0;
+
+  /*
+   * Si el presupuesto utiliza una tasa personalizada,
+   * el indicador continúa identificándola como personalizada.
+   */
   const isCustomRate = budget?.tipo_tasa === "custom";
 
+  /*
+   * Moneda actualmente seleccionada.
+   */
   const currencyLabel =
     monedaSeleccionada === "EUR" ? "EUR" : "USD";
 
@@ -62,7 +77,10 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-emerald-100 dark:border-slate-800 transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
 
-        {/* Brand Logo */}
+        {/* =====================================================
+            LOGO
+        ====================================================== */}
+
         <div
           onClick={() => onNavigate("dashboard")}
           className="flex items-center gap-2 cursor-pointer group"
@@ -86,19 +104,33 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Exchange Rate Indicator */}
+        {/* =====================================================
+            PARTE DERECHA
+        ====================================================== */}
+
         <div className="flex items-center gap-2 sm:gap-3">
+
+          {/* ===================================================
+              INDICADOR DE TASA
+          ==================================================== */}
+
           <div className="flex items-center gap-2 bg-emerald-50 dark:bg-slate-800/80 border border-emerald-200/60 dark:border-slate-700/60 rounded-full px-3 py-1.5 shadow-xs">
 
             <TrendingUp className="w-4 h-4 text-[#2E7D32] dark:text-emerald-400 shrink-0" />
 
             <div className="text-xs">
+
               <span className="text-slate-500 dark:text-slate-400 mr-1 hidden xs:inline">
-                {isCustomRate ? "Tasa Manual:" : "BCV Oficial:"}
+                {isCustomRate
+                  ? "Tasa Manual:"
+                  : "Tasa Oficial:"}
               </span>
 
               <span className="font-bold text-slate-900 dark:text-emerald-300">
-                Bs {activeRate.toFixed(2)}
+                Bs{" "}
+                {activeRate > 0
+                  ? activeRate.toFixed(2)
+                  : "--"}
               </span>
 
               <span className="ml-1 font-semibold text-slate-500 dark:text-slate-400">
@@ -106,11 +138,13 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
 
+            {/* Actualizar tasa */}
+
             {!isCustomRate && (
               <button
                 onClick={onRefreshRate}
                 disabled={isRefreshingRate}
-                title={`Actualizar tasa ${currencyLabel} desde BCV`}
+                title={`Actualizar tasa ${currencyLabel}`}
                 className="p-1 text-slate-500 hover:text-[#2E7D32] dark:text-slate-400 dark:hover:text-emerald-300 transition-colors rounded-full hover:bg-emerald-100/50 dark:hover:bg-slate-700"
                 id="header-refresh-bcv-btn"
               >
@@ -124,6 +158,8 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
+            {/* Tasa personalizada */}
+
             {isCustomRate && (
               <span className="text-[10px] bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded-md font-semibold">
                 Personalizada
@@ -131,7 +167,10 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* Cart Icon Quick Action */}
+          {/* ===================================================
+              CARRITO
+          ==================================================== */}
+
           <button
             onClick={() => onNavigate("carrito")}
             className={`relative p-2.5 rounded-xl border transition-all ${
@@ -151,7 +190,10 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          {/* Dark / Light Mode Toggle */}
+          {/* ===================================================
+              TEMA CLARO / OSCURO
+          ==================================================== */}
+
           <button
             onClick={onToggleDarkMode}
             className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
@@ -168,6 +210,7 @@ export const Header: React.FC<HeaderProps> = ({
               <Moon className="w-5 h-5 text-slate-600" />
             )}
           </button>
+
         </div>
       </div>
     </header>
