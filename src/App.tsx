@@ -486,7 +486,7 @@ export default function App() {
   // --------------------------------------------------
 
   /*
-   * 1. activeSelectedRate: 
+   * 1. activeSelectedRate:
    *    Si es EUR, usa estrictamente la tasa EUR o null.
    *    Si es USD, permite tasa custom o USD oficial.
    */
@@ -617,7 +617,7 @@ export default function App() {
                 />
               )}
 
-              {/* DASHBOARD */}
+              {/* DASHBOARD (Control) */}
 
               {currentScreen ===
                 "dashboard" && (
@@ -627,6 +627,12 @@ export default function App() {
                   }
                   cartSummary={
                     cartSummary
+                  }
+                  monedaSeleccionada={
+                    monedaSeleccionada
+                  }
+                  selectedRate={
+                    activeSelectedRate
                   }
                   onNavigate={
                     setCurrentScreen

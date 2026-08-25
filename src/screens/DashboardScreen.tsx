@@ -10,39 +10,48 @@ import {
   AlertTriangle,
   XCircle,
   TrendingUp,
-  ArrowRight,
-  Sparkles,
 } from "lucide-react";
-import { Budget, CartSummary, ScreenName } from "../types";
+import { Budget, CartSummary, ScreenName, Currency } from "../types";
 
 interface DashboardScreenProps {
   budget: Budget | null;
   cartSummary: CartSummary | null;
+  monedaSeleccionada: Currency;
+  selectedRate: number;
   onNavigate: (screen: ScreenName) => void;
 }
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   budget,
   cartSummary,
+  monedaSeleccionada,
+  selectedRate,
   onNavigate,
 }) => {
   const montoBs = budget?.monto_bs || 0;
   const spentBs = budget?.spent_bs || cartSummary?.total_bs || 0;
   const remainingBs = Math.max(0, montoBs - spentBs);
 
-  const activeRate = budget?.active_rate || 72.5;
-  const initialUsd = activeRate > 0 ? montoBs / activeRate : 0;
-  const spentUsd = activeRate > 0 ? spentBs / activeRate : 0;
-  const remainingUsd = activeRate > 0 ? remainingBs / activeRate : 0;
+  // Utiliza la tasa activa seleccionada (EUR o USD)
+  const activeRate =
+    Number.isFinite(selectedRate) && selectedRate > 0
+      ? selectedRate
+      : budget?.active_rate || 72.5;
 
-  // Percentage spent vs percentage remaining
+  const currencySymbol = monedaSeleccionada === "EUR" ? "€" : "$";
+  const currencyLabel = monedaSeleccionada === "EUR" ? "EUR" : "USD";
+
+  const initialCurrency = activeRate > 0 ? montoBs / activeRate : 0;
+  const spentCurrency = activeRate > 0 ? spentBs / activeRate : 0;
+  const remainingCurrency = activeRate > 0 ? remainingBs / activeRate : 0;
+
+  // Porcentajes
   const percentageSpent = montoBs > 0 ? (spentBs / montoBs) * 100 : 0;
-  const percentageRemaining = Math.max(0, Math.min(100, Math.round(100 - percentageSpent)));
+  const percentageRemaining = Math.max(
+    0,
+    Math.min(100, Math.round(100 - percentageSpent))
+  );
 
-  // Dynamic status card logic
-  // 🟢 Green: <80% spent
-  // 🟡 Yellow: >=80% spent and <100%
-  // 🔴 Red: >=100% spent
   let statusColor: "green" | "yellow" | "red" = "green";
   if (percentageSpent >= 100) {
     statusColor = "red";
@@ -59,26 +68,27 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             Control de Compra
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Monitorea tus gastos en bolívares y dólares en tiempo real
+            Monitorea tus gastos en bolívares y en {currencyLabel} en tiempo real
           </p>
         </div>
 
         <div className="inline-flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800/80 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold text-slate-900 dark:text-white shrink-0">
           <TrendingUp className="w-4 h-4 text-[#2E7D32]" />
-          <span>Tasa Utilizada:</span>
+          <span>Tasa {currencyLabel}:</span>
           <span className="text-[#2E7D32] dark:text-emerald-400 font-extrabold">
-            1 USD = Bs {activeRate.toFixed(2)}
+            1 {currencyLabel} = Bs {activeRate.toFixed(2)}
           </span>
           <span className="text-[10px] uppercase tracking-wider bg-emerald-200/60 dark:bg-emerald-900/80 text-[#2E7D32] dark:text-emerald-300 px-1.5 py-0.5 rounded-md ml-1 font-extrabold">
-            {budget?.tipo_tasa === "custom" ? "Custom" : "BCV"}
+            {monedaSeleccionada === "EUR"
+              ? "EUR"
+              : budget?.tipo_tasa === "custom"
+              ? "Custom"
+              : "BCV"}
           </span>
         </div>
       </div>
 
-      {/* 3 Main Stat Cards in EXACT specified order:
-          1. Disponible
-          2. Gastado
-          3. Presupuesto Inicial */}
+      {/* 3 Main Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Card 1: Disponible */}
         <div className="bg-linear-to-br from-emerald-500 to-emerald-700 text-white rounded-3xl p-5 shadow-md shadow-emerald-900/10 flex flex-col justify-between relative overflow-hidden">
@@ -93,10 +103,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           </div>
           <div>
             <div className="text-3xl font-black tracking-tight">
-              Bs {remainingBs.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              Bs{" "}
+              {remainingBs.toLocaleString("es-VE", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </div>
             <div className="text-emerald-100 font-medium text-sm mt-1">
-              ≈ ${remainingUsd.toFixed(2)} USD
+              ≈ {currencySymbol}
+              {remainingCurrency.toFixed(2)} {currencyLabel}
             </div>
           </div>
         </div>
@@ -113,10 +128,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           </div>
           <div>
             <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-              Bs {spentBs.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              Bs{" "}
+              {spentBs.toLocaleString("es-VE", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </div>
             <div className="text-slate-500 dark:text-slate-400 font-medium text-sm mt-1">
-              ≈ ${spentUsd.toFixed(2)} USD
+              ≈ {currencySymbol}
+              {spentCurrency.toFixed(2)} {currencyLabel}
             </div>
           </div>
         </div>
@@ -133,16 +153,21 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           </div>
           <div>
             <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-              Bs {montoBs.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              Bs{" "}
+              {montoBs.toLocaleString("es-VE", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </div>
             <div className="text-slate-500 dark:text-slate-400 font-medium text-sm mt-1">
-              ≈ ${initialUsd.toFixed(2)} USD
+              ≈ {currencySymbol}
+              {initialCurrency.toFixed(2)} {currencyLabel}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Dynamic Status Card with Circular Icon */}
+      {/* Dynamic Status Card */}
       <div
         className={`p-6 rounded-3xl border shadow-xs transition-all ${
           statusColor === "green"
@@ -153,7 +178,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         }`}
       >
         <div className="flex items-start sm:items-center gap-4">
-          {/* Circular Status Icon */}
           <div
             className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
               statusColor === "green"
@@ -168,7 +192,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             {statusColor === "red" && <XCircle className="w-7 h-7" />}
           </div>
 
-          {/* Dynamic Status Message */}
           <div className="flex-1">
             <div className="text-xs font-bold uppercase tracking-wider mb-1 opacity-80">
               Estado de Presupuesto
@@ -178,7 +201,10 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 <span>
                   🟢 Te quedan{" "}
                   <strong className="font-black text-[#2E7D32] dark:text-emerald-400">
-                    Bs {remainingBs.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                    Bs{" "}
+                    {remainingBs.toLocaleString("es-VE", {
+                      minimumFractionDigits: 2,
+                    })}
                   </strong>
                   . Puedes seguir comprando con tranquilidad.
                 </span>
@@ -194,14 +220,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               )}
               {statusColor === "red" && (
                 <span>
-                  🔴 Has alcanzado tu presupuesto. Revisa tu carrito antes de continuar.
+                  🔴 Has alcanzado tu presupuesto. Revisa tu carrito antes de
+                  continuar.
                 </span>
               )}
             </div>
           </div>
         </div>
 
-        {/* Progress Bar ("Te queda X%") */}
+        {/* Progress Bar */}
         <div className="mt-5 space-y-2">
           <div className="flex items-center justify-between text-xs font-bold">
             <span className="text-slate-600 dark:text-slate-300">
@@ -241,7 +268,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           Acciones Rápidas
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {/* Button 1: Agregar Producto */}
           <button
             onClick={() => onNavigate("agregar")}
             id="btn-quick-agregar"
@@ -260,7 +286,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             </div>
           </button>
 
-          {/* Button 2: Ver Carrito */}
           <button
             onClick={() => onNavigate("carrito")}
             id="btn-quick-carrito"
@@ -284,7 +309,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             </div>
           </button>
 
-          {/* Button 3: Historial */}
           <button
             onClick={() => onNavigate("historial")}
             id="btn-quick-historial"
@@ -303,7 +327,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             </div>
           </button>
 
-          {/* Button 4: Comunidad */}
           <button
             onClick={() => onNavigate("comunidad")}
             id="btn-quick-comunidad"
