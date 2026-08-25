@@ -153,7 +153,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
           ENCABEZADO
           ====================================================== */}
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
             <ShoppingCart className="w-7 h-7 text-[#2E7D32]" />
@@ -175,10 +175,10 @@ export const CartScreen: React.FC<CartScreenProps> = ({
             onNavigate("agregar")
           }
           id="btn-cart-add-more"
-          className="px-4 py-2 bg-emerald-50 dark:bg-slate-800 text-[#2E7D32] dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-slate-700 font-bold text-xs sm:text-sm rounded-2xl transition-colors flex items-center gap-1.5"
+          className="w-full sm:w-auto px-5 py-3.5 bg-[#2E7D32] dark:bg-emerald-700 text-white hover:bg-emerald-800 dark:hover:bg-emerald-600 font-bold text-sm sm:text-base rounded-2xl shadow-md shadow-emerald-900/15 hover:shadow-lg transition-all flex items-center justify-center gap-2.5 border border-emerald-700 dark:border-emerald-600"
         >
-          <Plus className="w-4 h-4" />
-          <span>Agregar más</span>
+          <Plus className="w-5 h-5" />
+          <span>Agregar más productos</span>
         </button>
       </div>
 
