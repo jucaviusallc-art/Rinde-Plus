@@ -71,16 +71,21 @@ export default function App() {
     useState<ExchangeRateInfo | null>(null);
 
   // --------------------------------------------------
-  // TEMA (Con detección y aplicación inmediata)
+  // TEMA
   // --------------------------------------------------
 
   const [isDarkMode, setIsDarkMode] =
     useState<boolean>(() => {
-      const savedTheme = localStorage.getItem("rinde_theme");
+      const savedTheme =
+        localStorage.getItem("rinde_theme");
+
       if (savedTheme) {
         return savedTheme === "dark";
       }
-      return window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      return window.matchMedia(
+        "(prefers-color-scheme: dark)"
+      ).matches;
     });
 
   // --------------------------------------------------
@@ -155,7 +160,9 @@ export default function App() {
 
           apiService.getCart(),
 
-          apiService.getExchangeRate("USD"),
+          apiService.getExchangeRate(
+            "USD"
+          ),
 
           apiService.getHistory(),
 
@@ -224,7 +231,9 @@ export default function App() {
           ),
         ]);
 
-        setRateInfo(usdRate);
+        setRateInfo(
+          usdRate
+        );
 
         if (
           monedaRef.current ===
@@ -240,7 +249,9 @@ export default function App() {
           err
         );
       } finally {
-        setIsRefreshingRate(false);
+        setIsRefreshingRate(
+          false
+        );
       }
     }, [refreshAppData]);
 
@@ -317,14 +328,18 @@ export default function App() {
           tasa_custom
         );
 
+      // Actualizar inmediatamente el presupuesto
       setBudget(updated);
 
-      await refreshAppData(
-        monedaRef.current
+      // Ir inmediatamente a Control
+      setCurrentScreen(
+        "dashboard"
       );
 
-      setCurrentScreen(
-        "inicio"
+      // Actualizar los demás datos
+      // sin bloquear la navegación
+      await refreshAppData(
+        monedaRef.current
       );
     };
 
@@ -482,18 +497,25 @@ export default function App() {
     0;
 
   // --------------------------------------------------
-  // TASAS ACTIVAS (AISLAMIENTO ESTRICTO EUR / USD)
+  // TASAS ACTIVAS
+  // AISLAMIENTO ESTRICTO EUR / USD
   // --------------------------------------------------
 
   /*
    * 1. activeSelectedRate:
-   *    Si es EUR, usa estrictamente la tasa EUR o null.
-   *    Si es USD, permite tasa custom o USD oficial.
+   *
+   * Si es EUR:
+   * utiliza estrictamente la tasa EUR.
+   *
+   * Si es USD:
+   * permite tasa custom o USD oficial.
    */
+
   const activeSelectedRate =
     monedaSeleccionada === "EUR"
       ? selectedRateInfo?.rate ?? null
-      : budget?.tipo_tasa === "custom" && budget.active_rate != null
+      : budget?.tipo_tasa === "custom" &&
+        budget.active_rate != null
         ? budget.active_rate
         : selectedRateInfo?.rate ??
           rateInfo?.rate ??
@@ -501,14 +523,20 @@ export default function App() {
 
   /*
    * 2. activeRateInfo:
-   *    Evita que EUR caiga en un fallback cruzado hacia rateInfo (USD).
-   *    Si la moneda seleccionada es EUR, devuelve únicamente selectedRateInfo (EUR).
-   *    Si es USD, permite el respaldo seguro entre selectedRateInfo y rateInfo (ambos USD).
+   *
+   * Si es EUR:
+   * devuelve únicamente selectedRateInfo.
+   *
+   * Si es USD:
+   * permite respaldo entre selectedRateInfo
+   * y rateInfo.
    */
+
   const activeRateInfo =
     monedaSeleccionada === "EUR"
       ? selectedRateInfo
-      : selectedRateInfo ?? rateInfo;
+      : selectedRateInfo ??
+        rateInfo;
 
   // --------------------------------------------------
   // RENDER
@@ -526,7 +554,9 @@ export default function App() {
         onNavigate={
           setCurrentScreen
         }
-        budget={budget}
+        budget={
+          budget
+        }
         rateInfo={
           activeRateInfo
         }
@@ -617,7 +647,7 @@ export default function App() {
                 />
               )}
 
-              {/* DASHBOARD (Control) */}
+              {/* DASHBOARD / CONTROL */}
 
               {currentScreen ===
                 "dashboard" && (
