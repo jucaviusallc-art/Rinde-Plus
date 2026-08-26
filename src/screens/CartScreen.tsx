@@ -8,17 +8,30 @@ import {
   ShoppingBag,
   AlertCircle,
 } from "lucide-react";
-import { Budget, CartSummary, ScreenName, Currency } from "../types";
+
+import {
+  Budget,
+  CartSummary,
+  ScreenName,
+  Currency,
+} from "../types";
 
 interface CartScreenProps {
   budget: Budget | null;
   cartSummary: CartSummary | null;
   monedaSeleccionada: Currency;
   selectedRate: number;
-  onUpdateQuantity: (id: number, quantity: number) => Promise<void>;
-  onDeleteItem: (id: number) => Promise<void>;
+  onUpdateQuantity: (
+    id: number,
+    quantity: number
+  ) => Promise<void>;
+  onDeleteItem: (
+    id: number
+  ) => Promise<void>;
   onCheckout: () => Promise<void>;
-  onNavigate: (screen: ScreenName) => void;
+  onNavigate: (
+    screen: ScreenName
+  ) => void;
 }
 
 export const CartScreen: React.FC<CartScreenProps> = ({
@@ -31,41 +44,32 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   onCheckout,
   onNavigate,
 }) => {
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isCheckingOut, setIsCheckingOut] =
+    useState(false);
 
-  const items = cartSummary?.items || [];
+  const [errorMsg, setErrorMsg] =
+    useState<string | null>(null);
+
+  const items =
+    cartSummary?.items || [];
 
   // ============================================================
   // TOTAL REAL DEL CARRITO EN BOLÍVARES
   // ============================================================
-  //
-  // El total en Bs NO se recalcula aquí con la tasa seleccionada.
-  //
-  // Cada producto ya fue convertido al momento de agregarlo y
-  // conserva su subtotal_bs.
-  //
-  // Esto es especialmente importante cuando existen productos
-  // registrados con EUR y productos registrados con USD.
-  //
+
   const totalBs = items.reduce(
     (sum, item) =>
-      sum + Number(item.subtotal_bs || 0),
+      sum +
+      Number(
+        item.subtotal_bs || 0
+      ),
     0
   );
 
   // ============================================================
   // TASA DE LA MONEDA ACTUALMENTE SELECCIONADA
   // ============================================================
-  //
-  // selectedRate viene desde App.tsx y representa:
-  //
-  // USD -> tasa USD
-  // EUR -> tasa EUR
-  //
-  // NO usamos budget.active_rate como fallback para evitar que
-  // una tasa antigua del presupuesto sustituya la tasa actual.
-  //
+
   const activeRate =
     Number.isFinite(selectedRate) &&
     selectedRate > 0
@@ -85,11 +89,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   // ============================================================
   // TOTAL EXPRESADO EN LA MONEDA SELECCIONADA
   // ============================================================
-  //
-  // Esta conversión es solamente para mostrar el equivalente.
-  //
-  // El total real del carrito sigue siendo totalBs.
-  //
+
   const totalSelectedCurrency =
     activeRate > 0
       ? totalBs / activeRate
@@ -100,10 +100,15 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   // ============================================================
 
   const montoBs =
-    Number(budget?.monto_bs || 0);
+    Number(
+      budget?.monto_bs || 0
+    );
 
   const remainingBs =
-    Math.max(0, montoBs - totalBs);
+    Math.max(
+      0,
+      montoBs - totalBs
+    );
 
   const remainingSelectedCurrency =
     activeRate > 0
@@ -114,46 +119,48 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   // FINALIZAR COMPRA
   // ============================================================
 
-  const handleCheckout = async () => {
-    if (items.length === 0) {
-      return;
-    }
+  const handleCheckout =
+    async () => {
+      if (items.length === 0) {
+        return;
+      }
 
-    setErrorMsg(null);
+      setErrorMsg(null);
 
-    try {
-      setIsCheckingOut(true);
+      try {
+        setIsCheckingOut(true);
 
-      await onCheckout();
+        await onCheckout();
 
-      onNavigate("historial");
-    } catch (err: any) {
-      console.error(
-        "Error al finalizar compra:",
-        err
-      );
+        onNavigate("historial");
+      } catch (err: any) {
+        console.error(
+          "Error al finalizar compra:",
+          err
+        );
 
-      setErrorMsg(
-        err?.message ||
-          "Error al finalizar la compra."
-      );
+        setErrorMsg(
+          err?.message ||
+            "Error al finalizar la compra."
+        );
 
-      setIsCheckingOut(false);
-    }
-  };
+        setIsCheckingOut(false);
+      }
+    };
 
   // ============================================================
   // RENDER
   // ============================================================
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 py-2">
+    <div className="max-w-4xl mx-auto space-y-3 py-1">
 
       {/* ======================================================
           ENCABEZADO
           ====================================================== */}
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
             <ShoppingCart className="w-7 h-7 text-[#2E7D32]" />
@@ -169,16 +176,22 @@ export const CartScreen: React.FC<CartScreenProps> = ({
           </p>
         </div>
 
+        {/* ==================================================
+            AGREGAR MÁS PRODUCTOS
+            ================================================== */}
+
         <button
           type="button"
           onClick={() =>
             onNavigate("agregar")
           }
           id="btn-cart-add-more"
-          className="w-full sm:w-auto px-5 py-3.5 bg-[#2E7D32] dark:bg-emerald-700 text-white hover:bg-emerald-800 dark:hover:bg-emerald-600 font-bold text-sm sm:text-base rounded-2xl shadow-md shadow-emerald-900/15 hover:shadow-lg transition-all flex items-center justify-center gap-2.5 border border-emerald-700 dark:border-emerald-600"
+          className="w-full sm:w-auto px-4 py-2.5 bg-[#2E7D32] dark:bg-emerald-700 text-white hover:bg-emerald-800 dark:hover:bg-emerald-600 font-bold text-sm sm:text-base rounded-2xl shadow-md shadow-emerald-900/15 hover:shadow-lg transition-all flex items-center justify-center gap-2 border border-emerald-700 dark:border-emerald-600"
         >
           <Plus className="w-5 h-5" />
-          <span>Agregar más productos</span>
+          <span>
+            Agregar más productos
+          </span>
         </button>
       </div>
 
@@ -186,7 +199,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
           INFORMACIÓN DE LA TASA
           ====================================================== */}
 
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
 
         <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
           Moneda de referencia
@@ -205,7 +218,6 @@ export const CartScreen: React.FC<CartScreenProps> = ({
               : "—"}
           </strong>
         </span>
-
       </div>
 
       {/* ======================================================
@@ -213,84 +225,102 @@ export const CartScreen: React.FC<CartScreenProps> = ({
           ====================================================== */}
 
       {errorMsg && (
-        <div className="p-4 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-2xl text-sm flex items-center gap-3">
+        <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-2xl text-sm flex items-center gap-3">
           <AlertCircle className="w-5 h-5 shrink-0" />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {/* ======================================================
-          RESUMEN
+          RESUMEN COMPACTO
+          IMPORTANTE: LOS MÓDULOS SE MANTIENEN UNO DEBAJO
+          DEL OTRO
           ====================================================== */}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="flex flex-col gap-2">
 
-        {/* TOTAL */}
+        {/* ==================================================
+            TOTAL DE COMPRA
+            ================================================== */}
 
-        <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-sm flex flex-col justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Total de Compra
-          </span>
+        <div className="bg-slate-900 text-white rounded-2xl px-4 py-3 shadow-sm">
 
-          <div className="mt-3">
-            <div className="text-3xl sm:text-4xl font-black text-emerald-400 tracking-tight">
-              Bs{" "}
-              {totalBs.toLocaleString(
-                "es-VE",
-                {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                }
-              )}
-            </div>
+          <div className="flex items-center justify-between gap-3">
 
-            <div className="text-slate-400 text-sm font-medium mt-1">
-              ≈ {currencySymbol}
-              {totalSelectedCurrency.toFixed(
-                2
-              )}{" "}
-              {currencyLabel}
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Total de Compra
+            </span>
+
+            <div className="text-right">
+
+              <div className="text-xl sm:text-2xl font-black text-emerald-400 tracking-tight leading-none">
+                Bs{" "}
+                {totalBs.toLocaleString(
+                  "es-VE",
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}
+              </div>
+
+              <div className="text-slate-400 text-[11px] font-medium mt-1">
+                ≈ {currencySymbol}
+                {totalSelectedCurrency.toFixed(
+                  2
+                )}{" "}
+                {currencyLabel}
+              </div>
+
             </div>
           </div>
         </div>
 
-        {/* RESTANTE */}
+        {/* ==================================================
+            TE QUEDAN
+            ================================================== */}
 
         <div
-          className={`rounded-3xl p-6 shadow-sm border flex flex-col justify-between transition-colors ${
+          className={`rounded-2xl px-4 py-3 shadow-sm border transition-colors ${
             remainingBs < 0
               ? "bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-100"
               : "bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-slate-900 dark:text-white"
           }`}
         >
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Te Quedan
-          </span>
 
-          <div className="mt-3">
-            <div
-              className={`text-3xl sm:text-4xl font-black tracking-tight ${
-                remainingBs < 0
-                  ? "text-rose-600 dark:text-rose-400"
-                  : "text-[#2E7D32] dark:text-emerald-400"
-              }`}
-            >
-              Bs{" "}
-              {remainingBs.toLocaleString(
-                "es-VE",
-                {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                }
-              )}
-            </div>
+          <div className="flex items-center justify-between gap-3">
 
-            <div className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">
-              ≈ {currencySymbol}
-              {remainingSelectedCurrency.toFixed(
-                2
-              )}{" "}
-              {currencyLabel}
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Te Quedan
+            </span>
+
+            <div className="text-right">
+
+              <div
+                className={`text-xl sm:text-2xl font-black tracking-tight leading-none ${
+                  remainingBs < 0
+                    ? "text-rose-600 dark:text-rose-400"
+                    : "text-[#2E7D32] dark:text-emerald-400"
+                }`}
+              >
+                Bs{" "}
+                {remainingBs.toLocaleString(
+                  "es-VE",
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}
+              </div>
+
+              <div className="text-slate-500 dark:text-slate-400 text-[11px] font-medium mt-1">
+                ≈ {currencySymbol}
+                {remainingSelectedCurrency.toFixed(
+                  2
+                )}{" "}
+                {currencyLabel}
+              </div>
+
             </div>
           </div>
         </div>
@@ -301,6 +331,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
           ====================================================== */}
 
       {items.length === 0 ? (
+
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-10 text-center space-y-4">
 
           <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-full flex items-center justify-center mx-auto">
@@ -328,9 +359,12 @@ export const CartScreen: React.FC<CartScreenProps> = ({
             className="px-6 py-3 bg-[#2E7D32] text-white font-bold text-sm rounded-2xl shadow-sm hover:bg-emerald-800 transition-all inline-flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            <span>Agregar primer producto</span>
+            <span>
+              Agregar primer producto
+            </span>
           </button>
         </div>
+
       ) : (
 
         /* ====================================================
@@ -346,14 +380,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
               // ------------------------------------------------
               // MONEDA REAL DEL PRODUCTO
               // ------------------------------------------------
-              //
-              // IMPORTANTE:
-              // No utilizamos monedaSeleccionada para representar
-              // el precio original del producto.
-              //
-              // Cada producto conserva la moneda con la que fue
-              // agregado.
-              //
+
               const itemCurrency: Currency =
                 item.currency === "EUR"
                   ? "EUR"
@@ -372,14 +399,18 @@ export const CartScreen: React.FC<CartScreenProps> = ({
               // ------------------------------------------------
 
               const itemRate =
-                Number(item.rate_used || 0);
+                Number(
+                  item.rate_used || 0
+                );
 
               // ------------------------------------------------
               // PRECIO EN BS
               // ------------------------------------------------
 
               const unitBs =
-                Number(item.price_bs || 0);
+                Number(
+                  item.price_bs || 0
+                );
 
               const subtotalBs =
                 Number(
@@ -448,8 +479,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
 
                           <span className="font-semibold">
                             Tasa{" "}
-                            {itemCurrencyLabel}:
-                            {" "}
+                            {itemCurrencyLabel}:{" "}
                             Bs{" "}
                             {itemRate.toFixed(
                               2
@@ -457,7 +487,6 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                           </span>
                         </>
                       )}
-
                     </div>
                   </div>
 
@@ -476,8 +505,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                             item.id,
                             Math.max(
                               1,
-                              item.quantity -
-                                1
+                              item.quantity - 1
                             )
                           )
                         }
@@ -509,7 +537,6 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
-
                     </div>
 
                     {/* SUBTOTAL */}
@@ -534,7 +561,6 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                         )}{" "}
                         {itemCurrencyLabel}
                       </div>
-
                     </div>
 
                     {/* ELIMINAR */}
@@ -557,14 +583,13 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 </div>
               );
             })}
-
           </div>
 
           {/* ==================================================
               RESUMEN FINAL
               ================================================== */}
 
-          <div className="pt-6 border-t border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="pt-5 border-t border-slate-200 dark:border-slate-800 space-y-3">
 
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold">
 
@@ -579,7 +604,6 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 )}{" "}
                 {currencyLabel}
               </span>
-
             </div>
 
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold">
@@ -598,8 +622,11 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                   }
                 )}
               </span>
-
             </div>
+
+            {/* ==================================================
+                FINALIZAR COMPRA
+                ================================================== */}
 
             <button
               type="button"
