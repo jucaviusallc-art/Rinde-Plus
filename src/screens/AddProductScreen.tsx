@@ -46,24 +46,7 @@ export const AddProductScreen: React.FC<
   // --------------------------------------------------
   // TASA ACTIVA
   // --------------------------------------------------
-  //
-  // REGLA:
-  //
-  // 1. Si el presupuesto utiliza una tasa
-  //    personalizada, se utiliza esa tasa.
-  //
-  // 2. Si NO es personalizada, selectedRate
-  //    es la fuente de verdad.
-  //
-  //    selectedRate viene desde App.tsx y ya
-  //    corresponde a la moneda seleccionada:
-  //
-  //       USD -> tasa USD
-  //       EUR -> tasa EUR
-  //
-  // Esto evita que una tasa vieja almacenada
-  // en el presupuesto reemplace la tasa actual.
-  //
+
   const activeRate =
     budget?.tipo_tasa === "custom" &&
     Number.isFinite(budget.active_rate) &&
@@ -229,16 +212,6 @@ export const AddProductScreen: React.FC<
     }
 
     try {
-      // ------------------------------------------------
-      // IMPORTANTE
-      // ------------------------------------------------
-      //
-      // La moneda que se envía al servidor es
-      // exactamente la que está seleccionada
-      // en Inicio.
-      //
-      // Nunca se convierte EUR -> USD aquí.
-      //
       console.log(
         "[RINDE+] ADD PRODUCT",
         {
@@ -268,8 +241,8 @@ export const AddProductScreen: React.FC<
       setPrice("");
       setQuantity(1);
 
-      // Ir al carrito
-      onNavigate("carrito");
+      // Ir a la página de Control (dashboard)
+      onNavigate("dashboard");
     } catch (error) {
       console.error(
         "Error agregando producto al carrito:",
