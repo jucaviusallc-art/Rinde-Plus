@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+
 import {
   Wallet,
   TrendingUp,
@@ -66,11 +67,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [errorMsg, setErrorMsg] =
     useState<string | null>(null);
 
-  /*
-   * --------------------------------------------------
-   * SINCRONIZAR PRESUPUESTO
-   * --------------------------------------------------
-   */
+  // --------------------------------------------------
+  // SINCRONIZAR CON EL PRESUPUESTO ACTUAL
+  // --------------------------------------------------
 
   useEffect(() => {
     if (budget) {
@@ -90,11 +89,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     }
   }, [budget]);
 
-  /*
-   * --------------------------------------------------
-   * MONEDA DE REFERENCIA
-   * --------------------------------------------------
-   */
+  // --------------------------------------------------
+  // MONEDA
+  // --------------------------------------------------
 
   const currencyLabel =
     monedaSeleccionada === "EUR"
@@ -106,36 +103,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       ? "€"
       : "$";
 
-  /*
-   * --------------------------------------------------
-   * TASA OFICIAL
-   * --------------------------------------------------
-   *
-   * IMPORTANTE:
-   *
-   * La tasa NO se calcula.
-   *
-   * No existe:
-   *
-   *   EUR_TO_USD_RATE
-   *
-   * No existe:
-   *
-   *   USD * 1.065
-   *
-   * Tampoco existe una tasa de respaldo como:
-   *
-   *   72.5
-   *
-   * rateInfo debe contener directamente la tasa
-   * correspondiente a la moneda seleccionada.
-   *
-   * USD -> tasa USD/Bs
-   * EUR -> tasa EUR/Bs
-   *
-   * Mientras rateInfo no esté disponible, officialRate
-   * será null.
-   */
+  // --------------------------------------------------
+  // TASA OFICIAL
+  // --------------------------------------------------
 
   const officialRate =
     rateInfo &&
@@ -144,11 +114,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       ? Number(rateInfo.rate)
       : null;
 
-  /*
-   * --------------------------------------------------
-   * VALORES DEL FORMULARIO
-   * --------------------------------------------------
-   */
+  // --------------------------------------------------
+  // PRESUPUESTO
+  // --------------------------------------------------
 
   const parsedMontoBs =
     Number.parseFloat(montoBsStr);
@@ -157,6 +125,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     Number.isFinite(parsedMontoBs) &&
     parsedMontoBs > 0;
 
+  // --------------------------------------------------
+  // TASA PERSONALIZADA
+  // --------------------------------------------------
+
   const parsedCustomRate =
     Number.parseFloat(tasaCustomStr);
 
@@ -164,11 +136,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     Number.isFinite(parsedCustomRate) &&
     parsedCustomRate > 0;
 
-  /*
-   * --------------------------------------------------
-   * TASA ACTIVA
-   * --------------------------------------------------
-   */
+  // --------------------------------------------------
+  // TASA ACTIVA
+  // --------------------------------------------------
 
   const activeRate =
     tipoTasa === "bcv"
@@ -177,11 +147,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         ? parsedCustomRate
         : null;
 
-  /*
-   * --------------------------------------------------
-   * EQUIVALENTE DEL PRESUPUESTO
-   * --------------------------------------------------
-   */
+  // --------------------------------------------------
+  // EQUIVALENTE
+  // --------------------------------------------------
 
   const currencyEquivalent =
     activeRate !== null &&
@@ -193,11 +161,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         ).toFixed(2)
       : null;
 
-  /*
-   * --------------------------------------------------
-   * GUARDAR PRESUPUESTO
-   * --------------------------------------------------
-   */
+  // --------------------------------------------------
+  // GUARDAR PRESUPUESTO
+  // --------------------------------------------------
 
   const handleSubmit = async (
     e: React.FormEvent
@@ -253,11 +219,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     }
   };
 
-  /*
-   * --------------------------------------------------
-   * CAMBIAR MONEDA
-   * --------------------------------------------------
-   */
+  // --------------------------------------------------
+  // CAMBIO DE MONEDA
+  // --------------------------------------------------
 
   const handleCurrencyChange = async (
     currency: Currency
@@ -280,62 +244,52 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     }
   };
 
-  /*
-   * --------------------------------------------------
-   * RENDER
-   * --------------------------------------------------
-   */
+  // --------------------------------------------------
+  // RENDER
+  // --------------------------------------------------
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 py-4">
+    <div className="max-w-3xl mx-auto space-y-2 py-0.5">
 
-      {/* =====================================================
-          HERO
-      ====================================================== */}
+      {/* =================================================
+          FORMULARIO PRINCIPAL
+      ================================================== */}
 
-      <div className="bg-linear-to-br from-[#2E7D32]/10 via-emerald-50 to-white dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900 border border-emerald-200/80 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm space-y-3">
 
-        <div className="flex items-center gap-3 mb-2">
+        {/* ------------------------------------------------
+            ENCABEZADO
+        ------------------------------------------------- */}
 
-          <div className="p-2.5 bg-[#2E7D32] text-white rounded-2xl shadow-sm">
-            <Wallet className="w-6 h-6" />
-          </div>
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">
 
-          <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
-            Rinde
-            <span className="text-[#2E7D32] font-black">
-              +
-            </span>
+          <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+
+            <Settings2 className="w-4 h-4 sm:w-5 sm:h-5 text-[#2E7D32]" />
+
+            Presupuesto de Compra
+
           </h1>
+
+          <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">
+
+            Rinde
+            <strong className="text-[#2E7D32]">
+              +
+            </strong>
+
+          </span>
 
         </div>
 
-        <p className="text-slate-600 dark:text-slate-300 text-sm sm:text-base max-w-xl">
-          Controla tu presupuesto de compras en
-          tiempo real en Venezuela. Convierte Bs a{" "}
-          {currencyLabel} instantáneamente usando la
-          tasa seleccionada.
-        </p>
-
-      </div>
-
-      {/* =====================================================
-          FORMULARIO PRINCIPAL
-      ====================================================== */}
-
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
-
-        <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <Settings2 className="w-5 h-5 text-[#2E7D32]" />
-          Configura tu Presupuesto de Compra
-        </h2>
-
-        {/* ERROR */}
+        {/* ------------------------------------------------
+            ERROR
+        ------------------------------------------------- */}
 
         {errorMsg && (
-          <div className="p-4 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-2xl text-sm flex items-center gap-3">
+          <div className="p-2.5 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-lg text-[11px] flex items-center gap-2">
 
-            <AlertCircle className="w-5 h-5 shrink-0" />
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
 
             <span>
               {errorMsg}
@@ -346,99 +300,105 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-6"
+          className="space-y-2.5"
         >
 
           {/* =================================================
-              PRESUPUESTO
+              PRESUPUESTO + MONEDA
           ================================================== */}
 
-          <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
 
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Presupuesto Inicial en Bolívares (Bs)
-            </label>
+            {/* PRESUPUESTO */}
 
-            <div className="relative">
+            <div>
 
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">
-                Bs
-              </span>
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
 
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="Ej: 3500.00"
-                value={montoBsStr}
-                onChange={(e) =>
-                  setMontoBsStr(
-                    e.target.value
-                  )
-                }
-                onFocus={(e) =>
-                  e.target.select()
-                }
-                required
-                id="input-presupuesto-bs"
-                className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 rounded-2xl font-bold text-2xl text-slate-900 dark:text-white focus:ring-2 focus:ring-[#2E7D32] focus:border-transparent outline-none transition-all"
-              />
+                Presupuesto Inicial (Bs)
+
+              </label>
+
+              <div className="relative">
+
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">
+
+                  Bs
+
+                </span>
+
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Ej: 3500.00"
+                  value={montoBsStr}
+                  onChange={(e) =>
+                    setMontoBsStr(
+                      e.target.value
+                    )
+                  }
+                  onFocus={(e) =>
+                    e.target.select()
+                  }
+                  required
+                  id="input-presupuesto-bs"
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-bold text-base text-slate-900 dark:text-white focus:ring-2 focus:ring-[#2E7D32] outline-none"
+                />
+
+              </div>
 
             </div>
 
-          </div>
+            {/* MONEDA */}
 
-          {/* =================================================
-              ÚNICO SELECTOR DE MONEDA
-          ================================================== */}
+            <div>
 
-          <div className="space-y-3">
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
 
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
-              Moneda de Referencia BCV
-            </label>
+                Moneda de Referencia
 
-            <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+              </label>
 
-              {/* DÓLAR */}
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
 
-              <button
-                type="button"
-                onClick={() =>
-                  handleCurrencyChange("USD")
-                }
-                className={`py-3 px-3 rounded-xl font-bold text-sm transition-all ${
-                  monedaSeleccionada === "USD"
-                    ? "bg-white dark:bg-slate-700 text-[#2E7D32] dark:text-emerald-400 shadow-sm"
-                    : "text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-700/60"
-                }`}
-              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleCurrencyChange("USD")
+                  }
+                  className={`py-1.5 px-2 rounded-md font-bold text-[11px] transition-all ${
+                    monedaSeleccionada === "USD"
+                      ? "bg-white dark:bg-slate-700 text-[#2E7D32] dark:text-emerald-400 shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:bg-white/50"
+                  }`}
+                >
 
-                <DollarSign className="inline-block w-4 h-4 mr-1" />
+                  <DollarSign className="inline-block w-3 h-3 mr-0.5" />
 
-                Dólar (USD)
+                  USD
 
-              </button>
+                </button>
 
-              {/* EURO */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleCurrencyChange("EUR")
+                  }
+                  className={`py-1.5 px-2 rounded-md font-bold text-[11px] transition-all ${
+                    monedaSeleccionada === "EUR"
+                      ? "bg-white dark:bg-slate-700 text-[#2E7D32] dark:text-emerald-400 shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:bg-white/50"
+                  }`}
+                >
 
-              <button
-                type="button"
-                onClick={() =>
-                  handleCurrencyChange("EUR")
-                }
-                className={`py-3 px-3 rounded-xl font-bold text-sm transition-all ${
-                  monedaSeleccionada === "EUR"
-                    ? "bg-white dark:bg-slate-700 text-[#2E7D32] dark:text-emerald-400 shadow-sm"
-                    : "text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-700/60"
-                }`}
-              >
+                  <Euro className="inline-block w-3 h-3 mr-0.5" />
 
-                <Euro className="inline-block w-4 h-4 mr-1" />
+                  EUR
 
-                Euro (EUR)
+                </button>
 
-              </button>
+              </div>
 
             </div>
 
@@ -448,18 +408,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               SELECTOR DE TASA
           ================================================== */}
 
-          <div className="space-y-3">
+          <div className="space-y-1">
 
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
-              Selecciona la Tasa de Cambio (
-              Bs/{currencyLabel})
+            <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+
+              Selecciona la Tasa de Cambio ({currencyLabel})
+
             </label>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
 
-              {/* =================================================
-                  TASA OFICIAL
-              ================================================== */}
+              {/* TASA OFICIAL */}
 
               <div
                 role="button"
@@ -476,18 +435,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   }
                 }}
                 id="btn-tasa-bcv"
-                className={`p-4 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                className={`p-2.5 rounded-lg border text-left flex flex-col justify-between transition-all cursor-pointer ${
                   tipoTasa === "bcv"
-                    ? "bg-emerald-50/80 dark:bg-emerald-950/40 border-[#2E7D32] text-slate-900 dark:text-white shadow-xs"
-                    : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    ? "bg-emerald-50/80 dark:bg-emerald-950/40 border-[#2E7D32] text-slate-900 dark:text-white shadow-sm"
+                    : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400"
                 }`}
               >
 
-                <div className="flex items-center justify-between w-full mb-1">
+                <div className="flex items-center justify-between w-full">
 
-                  <span className="font-bold text-sm flex items-center gap-1.5">
+                  <span className="font-bold text-[11px] flex items-center gap-1">
 
-                    <TrendingUp className="w-4 h-4 text-[#2E7D32]" />
+                    <TrendingUp className="w-3 h-3 text-[#2E7D32]" />
 
                     Tasa Oficial BCV
 
@@ -505,18 +464,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     onClick={(e) =>
                       e.stopPropagation()
                     }
-                    className="accent-[#2E7D32] w-4 h-4"
+                    className="accent-[#2E7D32] w-3 h-3"
                   />
 
                 </div>
 
-                <div className="mt-2 text-lg font-black text-[#2E7D32] dark:text-emerald-400 flex items-center justify-between">
+                <div className="mt-0.5 text-sm font-black text-[#2E7D32] dark:text-emerald-400 flex items-center justify-between">
 
                   <span>
 
                     {officialRate !== null
                       ? `Bs ${officialRate.toFixed(2)}`
-                      : "Cargando tasa..."}
+                      : "Cargando..."}
 
                   </span>
 
@@ -526,12 +485,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       e.stopPropagation();
                       onRefreshRate();
                     }}
-                    title={`Actualizar tasa ${currencyLabel}`}
-                    className="p-1 hover:bg-emerald-200/50 dark:hover:bg-slate-700 rounded-full transition-colors"
+                    className="p-0.5 hover:bg-emerald-200/50 rounded-full"
+                    aria-label="Actualizar tasa"
                   >
 
                     <RefreshCw
-                      className={`w-3.5 h-3.5 ${
+                      className={`w-3 h-3 ${
                         isRefreshingRate
                           ? "animate-spin"
                           : ""
@@ -542,19 +501,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
                 </div>
 
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-
-                  {officialRate !== null
-                    ? `Tasa oficial ${currencyLabel}/Bs obtenida de DolarApi - Oficial`
-                    : "Esperando la tasa oficial..."}
-
-                </p>
-
               </div>
 
-              {/* =================================================
-                  TASA PERSONALIZADA
-              ================================================== */}
+              {/* TASA PERSONALIZADA */}
 
               <div
                 role="button"
@@ -571,17 +520,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   }
                 }}
                 id="btn-tasa-custom"
-                className={`p-4 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                className={`p-2.5 rounded-lg border text-left flex flex-col justify-between transition-all cursor-pointer ${
                   tipoTasa === "custom"
-                    ? "bg-emerald-50/80 dark:bg-emerald-950/40 border-[#2E7D32] text-slate-900 dark:text-white shadow-xs"
-                    : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    ? "bg-emerald-50/80 dark:bg-emerald-950/40 border-[#2E7D32] text-slate-900 dark:text-white shadow-sm"
+                    : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400"
                 }`}
               >
 
-                <div className="flex items-center justify-between w-full mb-1">
+                <div className="flex items-center justify-between w-full">
 
-                  <span className="font-bold text-sm">
+                  <span className="font-bold text-[11px]">
+
                     Tasa Personalizada
+
                   </span>
 
                   <input
@@ -596,20 +547,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     onClick={(e) =>
                       e.stopPropagation()
                     }
-                    className="accent-[#2E7D32] w-4 h-4"
+                    className="accent-[#2E7D32] w-3 h-3"
                   />
 
                 </div>
 
-                <div className="mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                  Ingresa tu propia tasa de cambio
-                  manual
-                </div>
+                <div className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
 
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                  Útil para acordar tasas de tienda
-                  o paralelo
-                </p>
+                  Ingresa tu propia tasa manual
+
+                </div>
 
               </div>
 
@@ -622,17 +569,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           ================================================== */}
 
           {tipoTasa === "custom" && (
-            <div className="p-4 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl space-y-2 animate-fadeIn">
+            <div className="p-2.5 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg space-y-1">
 
-              <label className="block text-sm font-semibold text-amber-900 dark:text-amber-200">
-                Ingresa el valor de la tasa manual
-                (Bs por 1 {currencyLabel})
+              <label className="block text-[11px] font-semibold text-amber-900 dark:text-amber-200">
+
+                Valor manual (Bs por 1 {currencyLabel})
+
               </label>
 
               <div className="relative">
 
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-700 dark:text-amber-400 font-bold text-sm">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-700 text-[10px] font-bold">
+
                   Bs/{currencyLabel}
+
                 </span>
 
                 <input
@@ -650,7 +600,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     e.target.select()
                   }
                   id="input-tasa-custom"
-                  className="w-full pl-20 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-xl font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-[#2E7D32] outline-none"
+                  className="w-full pl-16 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-md font-bold text-sm text-slate-900 dark:text-white outline-none"
                 />
 
               </div>
@@ -662,47 +612,49 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               EQUIVALENTE
           ================================================== */}
 
-          <div className="p-5 bg-slate-900 text-white rounded-2xl flex items-center justify-between shadow-sm">
+          <div className="p-2.5 bg-slate-900 text-white rounded-lg flex items-center justify-between shadow-sm">
 
             <div>
 
-              <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">
-                Equivalente en {currencyLabel}
+              <span className="text-[9px] font-medium text-slate-400 uppercase tracking-wider block">
+
+                Equivalente
+
               </span>
 
-              <div className="text-3xl font-black text-emerald-400 mt-1 flex items-center gap-1">
+              <div className="text-lg font-black text-emerald-400 flex items-center gap-1 mt-0.5">
 
-                {monedaSeleccionada === "EUR" ? (
-                  <Euro className="w-7 h-7 shrink-0 text-emerald-400" />
-                ) : (
-                  <DollarSign className="w-7 h-7 shrink-0 text-emerald-400" />
-                )}
+                {currencySymbol}
 
                 <span>
+
                   {currencyEquivalent !== null
                     ? currencyEquivalent
                     : "--"}
+
                 </span>
 
-                <span className="text-sm font-medium text-slate-400 ml-1">
+                <span className="text-[10px] font-medium text-slate-400">
+
                   {currencyLabel}
+
                 </span>
 
               </div>
 
             </div>
 
-            <div className="text-right text-xs text-slate-400">
+            <div className="text-right text-[10px] text-slate-400">
 
               <span>
-                Tasa aplicada:
+                Aplicada:
               </span>
 
-              <p className="font-bold text-white text-sm">
+              <p className="font-bold text-white text-[11px]">
 
                 {activeRate !== null
-                  ? `Bs ${activeRate.toFixed(2)} / ${currencyLabel}`
-                  : "Esperando tasa..."}
+                  ? `Bs ${activeRate.toFixed(2)}`
+                  : "Esperando..."}
 
               </p>
 
@@ -711,7 +663,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
 
           {/* =================================================
-              GUARDAR
+              BOTÓN GUARDAR
           ================================================== */}
 
           <button
@@ -724,7 +676,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               )
             }
             id="btn-guardar-presupuesto"
-            className="w-full py-4 bg-[#2E7D32] hover:bg-emerald-800 text-white font-bold text-lg rounded-2xl shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-2.5 bg-[#2E7D32] hover:bg-emerald-800 text-white font-bold text-sm sm:text-base rounded-lg shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
 
             {isSubmitting ? (
@@ -734,10 +686,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             ) : (
               <>
                 <span>
-                  Guardar y comenzar
+                  Guardar y Comenzar
                 </span>
 
-                <ArrowRight className="w-5 h-5" />
+                <ArrowRight className="w-4 h-4" />
               </>
             )}
 
