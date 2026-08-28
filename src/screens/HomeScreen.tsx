@@ -262,21 +262,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
    */
 
   return (
-    <div className="max-w-3xl mx-auto space-y-2.5 py-1">
+    <div className="max-w-3xl mx-auto space-y-2 py-0.5">
 
       {/* =====================================================
           HERO COMPACTO
       ====================================================== */}
 
-      <div className="bg-linear-to-br from-[#2E7D32]/10 via-emerald-50 to-white dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900 border border-emerald-200/80 dark:border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-xs">
+      <div className="bg-linear-to-br from-[#2E7D32]/10 via-emerald-50 to-white dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900 border border-emerald-200/80 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-xs">
 
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-0.5">
 
-          <div className="p-2 bg-[#2E7D32] text-white rounded-xl shadow-xs">
-            <Wallet className="w-4 h-4" />
+          <div className="p-1.5 bg-[#2E7D32] text-white rounded-lg shadow-xs">
+            <Wallet className="w-3.5 h-3.5" />
           </div>
 
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+          <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
             Rinde
             <span className="text-[#2E7D32] font-black">
               +
@@ -285,7 +285,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         </div>
 
-        <p className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm max-w-xl">
+        <p className="text-slate-600 dark:text-slate-300 text-[11px] sm:text-xs max-w-xl">
           Controla tu presupuesto de compras en
           tiempo real en Venezuela. Convierte Bs a{" "}
           {currencyLabel} instantáneamente usando la
@@ -298,9 +298,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           FORMULARIO PRINCIPAL COMPACTO
       ====================================================== */}
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-4 shadow-xs space-y-2.5">
 
-        <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+        <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
           <Settings2 className="w-4 h-4 text-[#2E7D32]" />
           Configura tu Presupuesto de Compra
         </h2>
@@ -308,9 +308,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         {/* ERROR */}
 
         {errorMsg && (
-          <div className="p-2.5 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-xl text-xs flex items-center gap-2">
+          <div className="p-2 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-lg text-xs flex items-center gap-2">
 
-            <AlertCircle className="w-4 h-4 shrink-0" />
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
 
             <span>
               {errorMsg}
@@ -321,7 +321,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-3"
+          className="space-y-2.5"
         >
 
           {/* =================================================
@@ -330,13 +330,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
           <div>
 
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-0.5">
               Presupuesto Inicial en Bolívares (Bs)
             </label>
 
             <div className="relative">
 
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">
                 Bs
               </span>
 
@@ -356,7 +356,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 }
                 required
                 id="input-presupuesto-bs"
-                className="w-full pl-11 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 rounded-xl font-bold text-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-[#2E7D32] focus:border-transparent outline-none transition-all"
+                className="w-full pl-10 pr-3 py-2 bg-slate-50 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 rounded-lg font-bold text-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-[#2E7D32] focus:border-transparent outline-none transition-all"
               />
 
             </div>
@@ -367,13 +367,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               ÚNICO SELECTOR DE MONEDA
           ================================================== */}
 
-          <div className="space-y-1.5">
+          <div className="space-y-1">
 
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
               Moneda de Referencia BCV
             </label>
 
-            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+            <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
 
               {/* DÓLAR */}
 
@@ -382,14 +382,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 onClick={() =>
                   handleCurrencyChange("USD")
                 }
-                className={`py-2 px-2 rounded-lg font-bold text-xs transition-all ${
+                className={`py-1.5 px-2 rounded-md font-bold text-xs transition-all ${
                   monedaSeleccionada === "USD"
                     ? "bg-white dark:bg-slate-700 text-[#2E7D32] dark:text-emerald-400 shadow-xs"
                     : "text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-700/60"
                 }`}
               >
 
-                <DollarSign className="inline-block w-3.5 h-3.5 mr-1" />
+                <DollarSign className="inline-block w-3 h-3 mr-1" />
 
                 Dólar (USD)
 
@@ -402,14 +402,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 onClick={() =>
                   handleCurrencyChange("EUR")
                 }
-                className={`py-2 px-2 rounded-lg font-bold text-xs transition-all ${
+                className={`py-1.5 px-2 rounded-md font-bold text-xs transition-all ${
                   monedaSeleccionada === "EUR"
                     ? "bg-white dark:bg-slate-700 text-[#2E7D32] dark:text-emerald-400 shadow-xs"
                     : "text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-700/60"
                 }`}
               >
 
-                <Euro className="inline-block w-3.5 h-3.5 mr-1" />
+                <Euro className="inline-block w-3 h-3 mr-1" />
 
                 Euro (EUR)
 
@@ -423,9 +423,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               SELECTOR DE TASA
           ================================================== */}
 
-          <div className="space-y-1.5">
+          <div className="space-y-1">
 
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
               Selecciona la Tasa de Cambio (
               Bs/{currencyLabel})
             </label>
@@ -451,7 +451,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   }
                 }}
                 id="btn-tasa-bcv"
-                className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
                   tipoTasa === "bcv"
                     ? "bg-emerald-50/80 dark:bg-emerald-950/40 border-[#2E7D32] text-slate-900 dark:text-white shadow-xs"
                     : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -480,12 +480,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     onClick={(e) =>
                       e.stopPropagation()
                     }
-                    className="accent-[#2E7D32] w-3.5 h-3.5"
+                    className="accent-[#2E7D32] w-3 h-3"
                   />
 
                 </div>
 
-                <div className="mt-1 text-sm font-black text-[#2E7D32] dark:text-emerald-400 flex items-center justify-between">
+                <div className="mt-0.5 text-sm font-black text-[#2E7D32] dark:text-emerald-400 flex items-center justify-between">
 
                   <span>
 
@@ -546,7 +546,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   }
                 }}
                 id="btn-tasa-custom"
-                className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
                   tipoTasa === "custom"
                     ? "bg-emerald-50/80 dark:bg-emerald-950/40 border-[#2E7D32] text-slate-900 dark:text-white shadow-xs"
                     : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -571,12 +571,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     onClick={(e) =>
                       e.stopPropagation()
                     }
-                    className="accent-[#2E7D32] w-3.5 h-3.5"
+                    className="accent-[#2E7D32] w-3 h-3"
                   />
 
                 </div>
 
-                <div className="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                <div className="mt-0.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
                   Ingresa tu propia tasa manual
                 </div>
 
@@ -596,16 +596,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           ================================================== */}
 
           {tipoTasa === "custom" && (
-            <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl space-y-1 animate-fadeIn">
+            <div className="p-2.5 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl space-y-1 animate-fadeIn">
 
-              <label className="block text-xs font-semibold text-amber-900 dark:text-amber-200">
+              <label className="block text-[11px] font-semibold text-amber-900 dark:text-amber-200">
                 Ingresa el valor de la tasa manual
                 (Bs por 1 {currencyLabel})
               </label>
 
               <div className="relative">
 
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-700 dark:text-amber-400 font-bold text-xs">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-700 dark:text-amber-400 font-bold text-xs">
                   Bs/{currencyLabel}
                 </span>
 
@@ -624,7 +624,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     e.target.select()
                   }
                   id="input-tasa-custom"
-                  className="w-full pl-16 pr-3 py-2 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-bold text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-[#2E7D32] outline-none"
+                  className="w-full pl-15 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg font-bold text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-[#2E7D32] outline-none"
                 />
 
               </div>
@@ -636,7 +636,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               EQUIVALENTE
           ================================================== */}
 
-          <div className="p-3.5 bg-slate-900 text-white rounded-xl flex items-center justify-between shadow-xs">
+          <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between shadow-xs">
 
             <div>
 
@@ -644,12 +644,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 Equivalente en {currencyLabel}
               </span>
 
-              <div className="text-2xl font-black text-emerald-400 mt-0.5 flex items-center gap-1">
+              <div className="text-xl font-black text-emerald-400 mt-0.5 flex items-center gap-1">
 
                 {monedaSeleccionada === "EUR" ? (
-                  <Euro className="w-5 h-5 shrink-0 text-emerald-400" />
+                  <Euro className="w-4 h-4 shrink-0 text-emerald-400" />
                 ) : (
-                  <DollarSign className="w-5 h-5 shrink-0 text-emerald-400" />
+                  <DollarSign className="w-4 h-4 shrink-0 text-emerald-400" />
                 )}
 
                 <span>
@@ -685,7 +685,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
 
           {/* =================================================
-              GUARDAR
+              GUARDAR (Con letras G y C en MAYÚSCULAS)
           ================================================== */}
 
           <button
@@ -698,7 +698,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               )
             }
             id="btn-guardar-presupuesto"
-            className="w-full py-3 bg-[#2E7D32] hover:bg-emerald-800 text-white font-bold text-sm sm:text-base rounded-xl shadow-md shadow-emerald-900/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-2.5 bg-[#2E7D32] hover:bg-emerald-800 text-white font-bold text-sm sm:text-base rounded-xl shadow-md shadow-emerald-900/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
           >
 
             {isSubmitting ? (
@@ -708,7 +708,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             ) : (
               <>
                 <span>
-                  Guardar y comenzar
+                  Guardar y Comenzar
                 </span>
 
                 <ArrowRight className="w-4 h-4" />
