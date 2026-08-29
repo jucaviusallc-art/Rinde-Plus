@@ -8,12 +8,15 @@ import {
   Receipt,
   ShoppingBag,
   TrendingUp,
+  Trash2,
 } from "lucide-react";
 
 import { HistoryRecord, Currency, SnapshotItem } from "../types";
 
 interface HistoryScreenProps {
   history: HistoryRecord[];
+  onDeleteHistoryItem: (id: number) => Promise<void>;
+  onClearHistory: () => Promise<void>;
 }
 
 /**
@@ -64,19 +67,6 @@ function formatCurrency(value: unknown): string {
 
 /**
  * Obtiene la tasa REAL utilizada por un producto.
- *
- * PRIORIDAD:
- *
- * 1. item.rate_used
- *    Es la tasa almacenada específicamente para ese producto.
- *
- * 2. price_bs / price_usd
- *    Permite reconstruir la tasa de registros históricos
- *    creados por versiones anteriores del backend que no
- *    guardaban rate_used dentro del SnapshotItem.
- *
- * 3. record.rate_used
- *    Compatibilidad final con registros antiguos.
  */
 function getItemRate(
   item: SnapshotItem,
@@ -104,9 +94,6 @@ function getItemRate(
 
 /**
  * Obtiene las tasas utilizadas agrupadas por moneda.
- *
- * Esto evita el problema anterior donde un registro con
- * productos USD y EUR mostraba la misma tasa para ambas monedas.
  */
 function getRatesByCurrency(
   record: HistoryRecord
@@ -127,10 +114,14 @@ function getRatesByCurrency(
 
 export const HistoryScreen: React.FC<HistoryScreenProps> = ({
   history,
+  onDeleteHistoryItem,
+  onClearHistory,
 }) => {
   const [expandedId, setExpandedId] = useState<number | null>(
     history.length > 0 ? history[0].id : null
   );
+
+  const [isDeleting, setIsDeleting] = useState(false);
 
   /**
    * Si cambia el historial y el registro expandido ya no existe,
@@ -157,21 +148,62 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
     );
   };
 
+  const handleDeleteOne = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Evita que se expanda/colapse la tarjeta al hacer clic en borrar
+    if (!window.confirm("¿Estás seguro de que deseas eliminar este registro del historial?")) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      await onDeleteHistoryItem(id);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!window.confirm("¿Estás seguro de que deseas eliminar TODO el historial de compras? Esta acción no se puede deshacer.")) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      await onClearHistory();
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 py-2">
       {/* ============================================================
           ENCABEZADO
          ============================================================ */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-          <History className="w-7 h-7 text-[#2E7D32]" />
-          Historial de Compras
-        </h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+            <History className="w-7 h-7 text-[#2E7D32]" />
+            Historial de Compras
+          </h1>
 
-        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-          Registro histórico de tus compras finalizadas con la tasa
-          aplicada en cada producto
-        </p>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            Registro histórico de tus compras finalizadas con la tasa
+            aplicada en cada producto
+          </p>
+        </div>
+
+        {history.length > 0 && (
+          <button
+            type="button"
+            onClick={handleClearAll}
+            disabled={isDeleting}
+            className="inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 shrink-0"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Vaciar Historial</span>
+          </button>
+        )}
       </div>
 
       {/* ============================================================
@@ -201,18 +233,9 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
               ? record.items
               : [];
 
-            /* ======================================================
-               FECHA Y HORA
-               ====================================================== */
-
-            const rawDate =
-              record.date || record.created_at;
-
+            const rawDate = record.date || record.created_at;
             const dateObj = new Date(rawDate);
-
-            const validDate = !Number.isNaN(
-              dateObj.getTime()
-            );
+            const validDate = !Number.isNaN(dateObj.getTime());
 
             const dateFormatted = validDate
               ? dateObj.toLocaleDateString("es-VE", {
@@ -229,10 +252,6 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                 })
               : "--:--";
 
-            /* ======================================================
-               MONEDAS PRESENTES EN ESTA COMPRA
-               ====================================================== */
-
             const currencies = Array.from(
               new Set(
                 items.map((item) =>
@@ -242,36 +261,17 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
             ) as Currency[];
 
             const primaryCurrency =
-              currencies.length === 1
-                ? currencies[0]
-                : "USD";
+              currencies.length === 1 ? currencies[0] : "USD";
+            const primarySymbol = currencySymbol(primaryCurrency);
 
-            const primarySymbol =
-              currencySymbol(primaryCurrency);
-
-            /* ======================================================
-               TASAS REALES DEL REGISTRO
-               ====================================================== */
-
-            const ratesByCurrency =
-              getRatesByCurrency(record);
-
-            const usdRate =
-              ratesByCurrency.USD || 0;
-
-            const eurRate =
-              ratesByCurrency.EUR || 0;
-
+            const ratesByCurrency = getRatesByCurrency(record);
+            const usdRate = ratesByCurrency.USD || 0;
+            const eurRate = ratesByCurrency.EUR || 0;
             const hasUSD = usdRate > 0;
             const hasEUR = eurRate > 0;
 
-            /* ======================================================
-               TOTAL
-               ====================================================== */
-
             const totalBs = toNumber(record.total_bs);
-            const totalCurrency =
-              toNumber(record.total_usd);
+            const totalCurrency = toNumber(record.total_usd);
 
             return (
               <div
@@ -283,16 +283,10 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                    ================================================== */}
 
                 <div
-                  onClick={() =>
-                    toggleExpand(record.id)
-                  }
+                  onClick={() => toggleExpand(record.id)}
                   className="p-5 cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                   id={`history-header-${record.id}`}
                 >
-                  {/* =================================================
-                      INFORMACIÓN PRINCIPAL
-                     ================================================= */}
-
                   <div className="flex items-start sm:items-center gap-3">
                     <div className="p-3 bg-emerald-50 dark:bg-slate-800 text-[#2E7D32] dark:text-emerald-400 rounded-2xl shrink-0">
                       <ShoppingBag className="w-5 h-5" />
@@ -304,9 +298,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                           <Calendar className="w-3.5 h-3.5" />
                           {dateFormatted}
                         </span>
-
                         <span>•</span>
-
                         <span className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5" />
                           {timeFormatted}
@@ -314,23 +306,14 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                       </div>
 
                       <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
-                        Bs{" "}
-                        {formatBs(totalBs)}
-
+                        Bs {formatBs(totalBs)}
                         <span className="text-xs text-slate-500 dark:text-slate-400 font-medium ml-2">
                           ({primarySymbol}
-                          {formatCurrency(
-                            totalCurrency
-                          )}{" "}
-                          {primaryCurrency})
+                          {formatCurrency(totalCurrency)} {primaryCurrency})
                         </span>
                       </div>
                     </div>
                   </div>
-
-                  {/* =================================================
-                      TASAS APLICADAS
-                     ================================================= */}
 
                   <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100 dark:border-slate-800">
                     <div className="text-right">
@@ -340,38 +323,32 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
 
                       <div className="text-xs font-bold text-[#2E7D32] dark:text-emerald-400 flex items-center justify-end gap-2 flex-wrap">
                         <TrendingUp className="w-3 h-3" />
-
-                        {hasUSD && (
-                          <span>
-                            USD: Bs{" "}
-                            {formatBs(usdRate)}
-                          </span>
-                        )}
-
-                        {hasEUR && (
-                          <span>
-                            EUR: Bs{" "}
-                            {formatBs(eurRate)}
-                          </span>
-                        )}
-
+                        {hasUSD && <span>USD: Bs {formatBs(usdRate)}</span>}
+                        {hasEUR && <span>EUR: Bs {formatBs(eurRate)}</span>}
                         {!hasUSD && !hasEUR && (
-                          <span>
-                            Bs{" "}
-                            {formatBs(
-                              record.rate_used
-                            )}
-                          </span>
+                          <span>Bs {formatBs(record.rate_used)}</span>
                         )}
                       </div>
                     </div>
 
-                    <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-500">
-                      {isExpanded ? (
-                        <ChevronUp className="w-5 h-5" />
-                      ) : (
-                        <ChevronDown className="w-5 h-5" />
-                      )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteOne(record.id, e)}
+                        disabled={isDeleting}
+                        title="Eliminar este registro"
+                        className="p-2 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 dark:bg-slate-800 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 text-slate-500 rounded-xl transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+
+                      <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-500">
+                        {isExpanded ? (
+                          <ChevronUp className="w-5 h-5" />
+                        ) : (
+                          <ChevronDown className="w-5 h-5" />
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -382,21 +359,13 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
 
                 {isExpanded && (
                   <div className="p-5 bg-slate-50/70 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800/80 space-y-4">
-                    {/* =================================================
-                        PRESUPUESTO
-                       ================================================= */}
-
                     <div className="grid grid-cols-2 gap-3 text-xs bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
                       <div>
                         <span className="text-slate-400 block">
                           Presupuesto inicial:
                         </span>
-
                         <strong className="text-slate-900 dark:text-white">
-                          Bs{" "}
-                          {formatBs(
-                            record.budget_bs
-                          )}
+                          Bs {formatBs(record.budget_bs)}
                         </strong>
                       </div>
 
@@ -404,135 +373,58 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                         <span className="text-slate-400 block">
                           Sobrante al finalizar:
                         </span>
-
                         <strong className="text-[#2E7D32] dark:text-emerald-400">
-                          Bs{" "}
-                          {formatBs(
-                            record.remaining_bs
-                          )}
+                          Bs {formatBs(record.remaining_bs)}
                         </strong>
                       </div>
                     </div>
 
-                    {/* =================================================
-                        PRODUCTOS
-                       ================================================= */}
-
                     <div>
                       <h5 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                        Productos Comprados (
-                        {items.length})
+                        Productos Comprados ({items.length})
                       </h5>
 
                       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 divide-y divide-slate-100 dark:divide-slate-700/50">
-                        {items.map(
-                          (item, idx) => {
-                            const currency =
-                              normalizeCurrency(
-                                item.currency
-                              );
+                        {items.map((item, idx) => {
+                          const currency = normalizeCurrency(item.currency);
+                          const symbol = currencySymbol(currency);
+                          const rate = getItemRate(item, record);
+                          const priceCurrency = toNumber(item.price_usd);
+                          const priceBs = toNumber(item.price_bs);
+                          const subtotalBs = toNumber(item.subtotal_bs);
+                          const subtotalCurrency = toNumber(item.subtotal_usd);
 
-                            const symbol =
-                              currencySymbol(
-                                currency
-                              );
-
-                            /* =========================================
-                               TASA INDIVIDUAL DEL PRODUCTO
-
-                               Esta es la corrección principal.
-
-                               Nunca usamos record.rate_used directamente
-                               cuando el producto tiene su propia tasa.
-                               ========================================= */
-
-                            const rate =
-                              getItemRate(
-                                item,
-                                record
-                              );
-
-                            const priceCurrency =
-                              toNumber(
-                                item.price_usd
-                              );
-
-                            const priceBs =
-                              toNumber(
-                                item.price_bs
-                              );
-
-                            const subtotalBs =
-                              toNumber(
-                                item.subtotal_bs
-                              );
-
-                            const subtotalCurrency =
-                              toNumber(
-                                item.subtotal_usd
-                              );
-
-                            return (
-                              <div
-                                key={`${record.id}-${item.name}-${idx}`}
-                                className="p-3 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                              >
-                                {/* ================================
-                                    DATOS DEL PRODUCTO
-                                   ================================ */}
-
-                                <div>
-                                  <span className="font-semibold text-slate-900 dark:text-white block">
-                                    {item.name}
-                                  </span>
-
-                                  <span className="text-xs text-slate-500 dark:text-slate-400 block">
-                                    {item.quantity} ud ×{" "}
-                                    {symbol}
-                                    {formatCurrency(
-                                      priceCurrency
-                                    )}{" "}
-                                    {currency}
-                                  </span>
-
-                                  <span className="text-xs text-slate-500 dark:text-slate-400 block mt-0.5">
-                                    Bs{" "}
-                                    {formatBs(
-                                      priceBs
-                                    )}{" "}
-                                    / ud
-                                  </span>
-
-                                  {/* TASA REAL DEL PRODUCTO */}
-
-                                  <span className="text-xs text-[#2E7D32] dark:text-emerald-400 block mt-0.5 font-semibold">
-                                    Tasa {currency}: Bs{" "}
-                                    {formatBs(rate)}
-                                  </span>
-                                </div>
-
-                                {/* ================================
-                                    SUBTOTAL
-                                   ================================ */}
-
-                                <div className="text-right font-bold text-slate-900 dark:text-white">
-                                  Bs{" "}
-                                  {formatBs(
-                                    subtotalBs
-                                  )}
-
-                                  <span className="block text-xs text-slate-400 font-normal">
-                                    {symbol}
-                                    {formatCurrency(
-                                      subtotalCurrency
-                                    )}{" "}
-                                    {currency}
-                                  </span>
-                                </div>
+                          return (
+                            <div
+                              key={`${record.id}-${item.name}-${idx}`}
+                              className="p-3 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                            >
+                              <div>
+                                <span className="font-semibold text-slate-900 dark:text-white block">
+                                  {item.name}
+                                </span>
+                                <span className="text-xs text-slate-500 dark:text-slate-400 block">
+                                  {item.quantity} ud × {symbol}
+                                  {formatCurrency(priceCurrency)} {currency}
+                                </span>
+                                <span className="text-xs text-slate-500 dark:text-slate-400 block mt-0.5">
+                                  Bs {formatBs(priceBs)} / ud
+                                </span>
+                                <span className="text-xs text-[#2E7D32] dark:text-emerald-400 block mt-0.5 font-semibold">
+                                  Tasa {currency}: Bs {formatBs(rate)}
+                                </span>
                               </div>
-                            );
-                          }
-                        )}
+
+                              <div className="text-right font-bold text-slate-900 dark:text-white">
+                                Bs {formatBs(subtotalBs)}
+                                <span className="block text-xs text-slate-400 font-normal">
+                                  {symbol}
+                                  {formatCurrency(subtotalCurrency)} {currency}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>

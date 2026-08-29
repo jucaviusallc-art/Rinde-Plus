@@ -414,7 +414,33 @@ export default function App() {
         monedaRef.current
       );
     };
+// --------------------------------------------------
+  // ELIMINAR REGISTRO DEL HISTORIAL
+  // --------------------------------------------------
 
+  const handleDeleteHistoryItem = async (id: number) => {
+    try {
+      await apiService.deleteHistoryItem(id);
+      await refreshAppData(monedaRef.current);
+    } catch (err) {
+      console.error("Error al eliminar el registro del historial:", err);
+      alert("No fue posible eliminar el registro. Intenta nuevamente.");
+    }
+  };
+
+  // --------------------------------------------------
+  // VACIAR TODO EL HISTORIAL
+  // --------------------------------------------------
+
+  const handleClearHistory = async () => {
+    try {
+      await apiService.clearHistory();
+      await refreshAppData(monedaRef.current);
+    } catch (err) {
+      console.error("Error al vaciar el historial:", err);
+      alert("No fue posible vaciar el historial. Intenta nuevamente.");
+    }
+  };
   // --------------------------------------------------
   // ACTUALIZAR TASAS MANUALMENTE
   // --------------------------------------------------
@@ -727,14 +753,20 @@ export default function App() {
 
               {/* HISTORIAL */}
 
-              {currentScreen ===
-                "historial" && (
-                <HistoryScreen
-                  history={
-                    history
-                  }
-                />
-              )}
+                            {currentScreen ===
+                              "historial" && (
+                              <HistoryScreen
+                                history={
+                                  history
+                                }
+                                onDeleteHistoryItem={
+                                  handleDeleteHistoryItem
+                                }
+                                onClearHistory={
+                                  handleClearHistory
+                                }
+                              />
+                            )}
 
               {/* COMUNIDAD */}
 

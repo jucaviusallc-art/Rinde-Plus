@@ -722,7 +722,37 @@ export const apiService = {
       return [];
     }
   },
+  async deleteHistoryItem(id: number): Promise<void> {
+    const res = await fetch(
+      `${API_BASE}/history/${id}`,
+      {
+        method: "DELETE",
+        headers: getUserHeaders(),
+      }
+    );
 
+    if (!res.ok) {
+      throw new Error(
+        "Error al eliminar el registro del historial"
+      );
+    }
+  },
+
+  async clearHistory(): Promise<void> {
+    const res = await fetch(
+      `${API_BASE}/history`,
+      {
+        method: "DELETE",
+        headers: getUserHeaders(),
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error(
+        "Error al vaciar el historial"
+      );
+    }
+  },
   // --------------------------------------------------
   // PRECIOS DE LA COMUNIDAD
   // --------------------------------------------------

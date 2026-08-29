@@ -2011,7 +2011,83 @@ async function startServer() {
       );
     }
   );
+  app.delete(
+    [
+      "/app-api/history/:id",
+      "/api/history/:id",
+    ],
+    (req, res) => {
+      const db =
+        readDb();
 
+      const userId =
+        getUserId(req);
+
+      const id =
+        Number.parseInt(
+          req.params.id,
+          10
+        );
+
+      const originalLength =
+        db.shopping_history.length;
+
+      db.shopping_history =
+        db.shopping_history.filter(
+          (record) =>
+            !(
+              record.id === id &&
+              record.user_id ===
+                userId
+            )
+        );
+
+      if (
+        db.shopping_history.length ===
+        originalLength
+      ) {
+        return res
+          .status(404)
+          .json({
+            error:
+              "Compra no encontrada",
+          });
+      }
+
+      writeDb(db);
+
+      return res.json({
+        success: true,
+      });
+    }
+  );
+
+  app.delete(
+    [
+      "/app-api/history",
+      "/api/history",
+    ],
+    (req, res) => {
+      const db =
+        readDb();
+
+      const userId =
+        getUserId(req);
+
+      db.shopping_history =
+        db.shopping_history.filter(
+          (record) =>
+            record.user_id !==
+            userId
+        );
+
+      writeDb(db);
+
+      return res.json({
+        success: true,
+      });
+    }
+  );
   /*
    * ==========================================================
    * PRECIOS COMUNITARIOS
