@@ -164,22 +164,22 @@ export const DashboardScreen: React.FC<
   // --------------------------------------------------
 
   return (
-    <div className="max-w-3xl mx-auto space-y-3 py-0.5">
+    <div className="max-w-3xl mx-auto space-y-2 py-0.5">
 
       {/* ==================================================
           ENCABEZADO
           ================================================== */}
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl px-4 py-3 shadow-xs">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl px-3.5 py-2.5 shadow-xs">
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
 
           <div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+            <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
               Control de Compra
             </h1>
 
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.2">
               Monitorea tus gastos en bolívares y en{" "}
               {currencyLabel}
             </p>
@@ -187,9 +187,9 @@ export const DashboardScreen: React.FC<
 
           {/* TASA */}
 
-          <div className="inline-flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800/80 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-900 dark:text-white shrink-0">
+          <div className="inline-flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800/80 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-900 dark:text-white shrink-0">
 
-            <TrendingUp className="w-4 h-4 text-[#2E7D32]" />
+            <TrendingUp className="w-3.5 h-3.5 text-[#2E7D32]" />
 
             <span>
               Tasa {currencyLabel}:
@@ -205,7 +205,7 @@ export const DashboardScreen: React.FC<
 
             </span>
 
-            <span className="text-[9px] uppercase tracking-wider bg-emerald-200/60 dark:bg-emerald-900/80 text-[#2E7D32] dark:text-emerald-300 px-1.5 py-0.5 rounded-md font-extrabold">
+            <span className="text-[9px] uppercase tracking-wider bg-emerald-200/60 dark:bg-emerald-900/80 text-[#2E7D32] dark:text-emerald-300 px-1 py-0.2 rounded-md font-extrabold">
 
               {monedaSeleccionada ===
               "EUR"
@@ -225,30 +225,30 @@ export const DashboardScreen: React.FC<
 
 
       {/* ==================================================
-          DISPONIBLE
+          DISPONIBLE (Ajuste milimétrico)
           ================================================== */}
 
-      <div className="bg-linear-to-br from-emerald-500 to-emerald-700 text-white rounded-2xl px-4 py-3 shadow-md shadow-emerald-900/10 relative overflow-hidden">
+      <div className="bg-linear-to-br from-emerald-500 to-emerald-700 text-white rounded-xl px-4 py-2.5 shadow-sm relative overflow-hidden">
 
         <div className="absolute -right-5 -bottom-8 w-24 h-24 bg-white/10 rounded-full blur-xl pointer-events-none" />
 
-        <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center justify-between mb-1">
 
-          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-100">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-100">
             Disponible
           </span>
 
-          <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-xs">
-            <Wallet className="w-4 h-4 text-white" />
+          <div className="p-1 bg-white/20 rounded-md backdrop-blur-xs">
+            <Wallet className="w-3.5 h-3.5 text-white" />
           </div>
 
         </div>
 
-        <div className="text-2xl sm:text-3xl font-black tracking-tight">
+        <div className="text-2xl font-black tracking-tight">
           Bs {formatBs(remainingBs)}
         </div>
 
-        <div className="text-emerald-100 font-medium text-xs mt-0.5">
+        <div className="text-emerald-100 font-medium text-[11px] mt-0.5">
           ≈ {currencySymbol}
           {formatSelectedCurrency(
             remainingCurrency
@@ -260,28 +260,28 @@ export const DashboardScreen: React.FC<
 
 
       {/* ==================================================
-          GASTADO
+          GASTADO (Ajuste milimétrico)
           ================================================== */}
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 shadow-xs">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 shadow-xs">
 
-        <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center justify-between mb-1">
 
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
             Gastado
           </span>
 
-          <div className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300">
-            <ShoppingCart className="w-4 h-4" />
+          <div className="p-1 bg-slate-100 dark:bg-slate-800 rounded-md text-slate-600 dark:text-slate-300">
+            <ShoppingCart className="w-3.5 h-3.5" />
           </div>
 
         </div>
 
-        <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+        <div className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
           Bs {formatBs(spentBs)}
         </div>
 
-        <div className="text-slate-500 dark:text-slate-400 font-medium text-xs mt-0.5">
+        <div className="text-slate-500 dark:text-slate-400 font-medium text-[11px] mt-0.5">
           ≈ {currencySymbol}
           {formatSelectedCurrency(
             spentCurrency
@@ -293,28 +293,28 @@ export const DashboardScreen: React.FC<
 
 
       {/* ==================================================
-          PRESUPUESTO INICIAL
+          PRESUPUESTO INICIAL (Ajuste milimétrico)
           ================================================== */}
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 shadow-xs">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 shadow-xs">
 
-        <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center justify-between mb-1">
 
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
             Presupuesto Inicial
           </span>
 
-          <div className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300">
-            <Settings className="w-4 h-4" />
+          <div className="p-1 bg-slate-100 dark:bg-slate-800 rounded-md text-slate-600 dark:text-slate-300">
+            <Settings className="w-3.5 h-3.5" />
           </div>
 
         </div>
 
-        <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+        <div className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
           Bs {formatBs(montoBs)}
         </div>
 
-        <div className="text-slate-500 dark:text-slate-400 font-medium text-xs mt-0.5">
+        <div className="text-slate-500 dark:text-slate-400 font-medium text-[11px] mt-0.5">
           ≈ {currencySymbol}
           {formatSelectedCurrency(
             initialCurrency
@@ -330,7 +330,7 @@ export const DashboardScreen: React.FC<
           ================================================== */}
 
       <div
-        className={`px-4 py-3 rounded-2xl border shadow-xs transition-all ${
+        className={`px-3.5 py-2.5 rounded-xl border shadow-xs transition-all ${
           statusColor === "green"
             ? "bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800"
             : statusColor === "yellow"
@@ -341,10 +341,10 @@ export const DashboardScreen: React.FC<
 
         {/* TITULO */}
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
 
           <div
-            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-sm ${
+            className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 shadow-sm ${
               statusColor === "green"
                 ? "bg-[#2E7D32] text-white"
                 : statusColor === "yellow"
@@ -354,26 +354,26 @@ export const DashboardScreen: React.FC<
           >
 
             {statusColor === "green" && (
-              <CheckCircle2 className="w-5 h-5" />
+              <CheckCircle2 className="w-4 h-4" />
             )}
 
             {statusColor === "yellow" && (
-              <AlertTriangle className="w-5 h-5" />
+              <AlertTriangle className="w-4 h-4" />
             )}
 
             {statusColor === "red" && (
-              <XCircle className="w-5 h-5" />
+              <XCircle className="w-4 h-4" />
             )}
 
           </div>
 
           <div className="flex-1 min-w-0">
 
-            <div className="text-[11px] font-bold uppercase tracking-wider opacity-80 text-slate-700 dark:text-slate-300">
+            <div className="text-[10px] font-bold uppercase tracking-wider opacity-80 text-slate-700 dark:text-slate-300">
               Estado del Presupuesto
             </div>
 
-            <div className="text-xs sm:text-sm font-bold leading-snug text-slate-900 dark:text-white mt-0.5">
+            <div className="text-xs font-bold leading-snug text-slate-900 dark:text-white mt-0.2">
 
               {statusColor === "green" && (
                 <span>
@@ -415,9 +415,9 @@ export const DashboardScreen: React.FC<
 
         {/* PROGRESO */}
 
-        <div className="mt-2.5 space-y-1">
+        <div className="mt-2 space-y-0.5">
 
-          <div className="flex items-center justify-between text-[11px] font-bold">
+          <div className="flex items-center justify-between text-[10px] font-bold">
 
             <span className="text-slate-600 dark:text-slate-300">
               Progreso de compra:
@@ -438,7 +438,7 @@ export const DashboardScreen: React.FC<
 
           </div>
 
-          <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+          <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
 
             <div
               className={`h-full rounded-full transition-all duration-500 ${
@@ -470,15 +470,15 @@ export const DashboardScreen: React.FC<
           ACCIONES RÁPIDAS
           ================================================== */}
 
-      <div className="space-y-1.5 pt-0.5">
+      <div className="space-y-1">
 
-        <h2 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-1">
+        <h2 className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-1">
           Acciones Rápidas
         </h2>
 
         {/* LAS 4 ACCIONES EN UNA SOLA LÍNEA */}
 
-        <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+        <div className="grid grid-cols-4 gap-1.5">
 
           {/* AGREGAR */}
 
@@ -488,21 +488,17 @@ export const DashboardScreen: React.FC<
               onNavigate("agregar")
             }
             id="btn-quick-agregar"
-            className="min-w-0 p-2 sm:p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#2E7D32] dark:hover:border-emerald-500 rounded-xl shadow-xs hover:shadow-md transition-all group flex flex-col items-center justify-center text-center min-h-20 sm:min-h-24"
+            className="min-w-0 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#2E7D32] dark:hover:border-emerald-500 rounded-xl shadow-xs hover:shadow-md transition-all group flex flex-col items-center justify-center text-center min-h-16"
           >
 
-            <div className="p-1.5 sm:p-2 bg-emerald-50 dark:bg-slate-800 text-[#2E7D32] dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
+            <div className="p-1.5 bg-emerald-50 dark:bg-slate-800 text-[#2E7D32] dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
 
-              <PlusCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+              <PlusCircle className="w-4 h-4" />
 
             </div>
 
-            <span className="block font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs mt-1.5">
+            <span className="block font-bold text-slate-900 dark:text-white text-[11px] mt-1">
               Agregar
-            </span>
-
-            <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Nuevo producto
             </span>
 
           </button>
@@ -516,33 +512,27 @@ export const DashboardScreen: React.FC<
               onNavigate("carrito")
             }
             id="btn-quick-carrito"
-            className="min-w-0 p-2 sm:p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#2E7D32] dark:hover:border-emerald-500 rounded-xl shadow-xs hover:shadow-md transition-all group flex flex-col items-center justify-center text-center min-h-20 sm:min-h-24 relative"
+            className="min-w-0 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#2E7D32] dark:hover:border-emerald-500 rounded-xl shadow-xs hover:shadow-md transition-all group flex flex-col items-center justify-center text-center min-h-16 relative"
           >
 
-            <div className="p-1.5 sm:p-2 bg-emerald-50 dark:bg-slate-800 text-[#2E7D32] dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
+            <div className="p-1.5 bg-emerald-50 dark:bg-slate-800 text-[#2E7D32] dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
 
-              <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
+              <ShoppingCart className="w-4 h-4" />
 
             </div>
 
             {cartSummary &&
               cartSummary.total_items >
                 0 && (
-                <span className="absolute top-1.5 right-1.5 bg-[#2E7D32] text-white font-extrabold text-[9px] sm:text-[10px] min-w-4 h-4 px-1 rounded-full flex items-center justify-center">
+                <span className="absolute top-1 right-1 bg-[#2E7D32] text-white font-extrabold text-[9px] min-w-4 h-4 px-1 rounded-full flex items-center justify-center">
                   {
                     cartSummary.total_items
                   }
                 </span>
               )}
 
-            <span className="block font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs mt-1.5">
+            <span className="block font-bold text-slate-900 dark:text-white text-[11px] mt-1">
               Carrito
-            </span>
-
-            <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-              {cartSummary?.total_items ||
-                0}{" "}
-              items
             </span>
 
           </button>
@@ -556,21 +546,17 @@ export const DashboardScreen: React.FC<
               onNavigate("historial")
             }
             id="btn-quick-historial"
-            className="min-w-0 p-2 sm:p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#2E7D32] dark:hover:border-emerald-500 rounded-xl shadow-xs hover:shadow-md transition-all group flex flex-col items-center justify-center text-center min-h-20 sm:min-h-24"
+            className="min-w-0 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#2E7D32] dark:hover:border-emerald-500 rounded-xl shadow-xs hover:shadow-md transition-all group flex flex-col items-center justify-center text-center min-h-16"
           >
 
-            <div className="p-1.5 sm:p-2 bg-emerald-50 dark:bg-slate-800 text-[#2E7D32] dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
+            <div className="p-1.5 bg-emerald-50 dark:bg-slate-800 text-[#2E7D32] dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
 
-              <History className="w-4 h-4 sm:w-5 sm:h-5" />
+              <History className="w-4 h-4" />
 
             </div>
 
-            <span className="block font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs mt-1.5">
+            <span className="block font-bold text-slate-900 dark:text-white text-[11px] mt-1">
               Historial
-            </span>
-
-            <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Compras pasadas
             </span>
 
           </button>
@@ -584,21 +570,17 @@ export const DashboardScreen: React.FC<
               onNavigate("comunidad")
             }
             id="btn-quick-comunidad"
-            className="min-w-0 p-2 sm:p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#2E7D32] dark:hover:border-emerald-500 rounded-xl shadow-xs hover:shadow-md transition-all group flex flex-col items-center justify-center text-center min-h-20 sm:min-h-24"
+            className="min-w-0 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#2E7D32] dark:hover:border-emerald-500 rounded-xl shadow-xs hover:shadow-md transition-all group flex flex-col items-center justify-center text-center min-h-16"
           >
 
-            <div className="p-1.5 sm:p-2 bg-emerald-50 dark:bg-slate-800 text-[#2E7D32] dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
+            <div className="p-1.5 bg-emerald-50 dark:bg-slate-800 text-[#2E7D32] dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
 
-              <Users className="w-4 h-4 sm:w-5 sm:h-5" />
+              <Users className="w-4 h-4" />
 
             </div>
 
-            <span className="block font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs mt-1.5">
+            <span className="block font-bold text-slate-900 dark:text-white text-[11px] mt-1">
               Comunidad
-            </span>
-
-            <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Precios compartidos
             </span>
 
           </button>
