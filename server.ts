@@ -1,1269 +1,238 @@
+import express from "express";
 import cors from "cors";
-import express, { Request } from "express";
-import path from "path";
-import fs from "fs";
-import { createServer as createViteServer } from "vite";
+import pkg from "pg";
+
+const { Pool } = pkg;
+
+// ==========================================================
+// CONEXIÓN A SUPABASE / POSTGRESQL
+// ==========================================================
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
+});
+
+// ==========================================================
+// EXPRESS
+// ==========================================================
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-const DB_FILE = path.join(process.cwd(), "db_rinde.json");
 
-/*
- * TASAS DE RESPALDO
- *
- * Estas tasas solamente se utilizan si no existe información
- * válida en la base de datos y la consulta externa no está disponible.
- *
- * NO se utiliza ninguna fórmula EUR = USD * factor.
- */
-const DEFAULT_USD_RATE = 784.66;
-const DEFAULT_EUR_RATE = 916.00;
+// ==========================================================
+// USUARIO
+// ==========================================================
 
-interface Budget {
-  id: number;
-  user_id: string;
-  monto_bs: number;
-  tipo_tasa: "bcv" | "custom";
-  tasa_custom: number;
-  spent_bs: number;
-  updated_at: string;
-}
+function getUserId(req: express.Request): string {
+  const userId = req.headers["x-user-id"];
 
-type Currency = "USD" | "EUR";
-
-interface CartItem {
-  id: number;
-  user_id: string;
-  name: string;
-
-  /*
-   * Se conserva el nombre price_usd por compatibilidad
-   * con la aplicación existente.
-   *
-   * El valor representa realmente el precio ingresado
-   * en la moneda indicada por "currency".
-   */
-  price_usd: number;
-
-  currency: Currency;
-  quantity: number;
-
-  /*
-   * Tasa BCV utilizada exactamente al agregar el producto.
-   */
-  rate_used: number;
-
-  created_at: string;
-}
-
-interface HistoryRecord {
-  id: number;
-  user_id: string;
-  date: string;
-  total_bs: number;
-  total_usd: number;
-
-  /*
-   * Para compras de una sola moneda representa la tasa
-   * aplicada a esa compra.
-   *
-   * Se mantiene por compatibilidad con HistoryScreen.
-   */
-  rate_used: number;
-
-  budget_bs: number;
-  remaining_bs: number;
-
-  items: Array<{
-    name: string;
-    price_usd: number;
-    currency: Currency;
-    price_bs: number;
-    quantity: number;
-    subtotal_usd: number;
-    subtotal_bs: number;
-
-    /*
-     * Nueva información: tasa exacta utilizada
-     * por este producto.
-     */
-    rate_used?: number;
-  }>;
-
-  created_at: string;
-}
-
-interface CommunityPrice {
-  id: number;
-  product: string;
-  price_usd: number;
-  price_bs: number;
-  supermarket: string;
-  city: string;
-  state: string;
-  user_name: string;
-  created_at: string;
-}
-
-interface CommunityPriceGroup {
-  product: string;
-  city: string;
-  state: string;
-  lowest_price_usd: number;
-  highest_price_usd: number;
-  average_price_usd: number;
-  lowest_price_bs: number;
-  highest_price_bs: number;
-  average_price_bs: number;
-  reports: number;
-  supermarkets: number;
-  latest_report_at: string;
-  offers: Array<CommunityPrice & {
-    is_lowest: boolean;
-  }>;
-}
-
-/*
- * ============================================================
- * TASAS DE CAMBIO
- * ============================================================
- *
- * Antes:
- *
- *   rate_usd
- *
- * y EUR se calculaba:
- *
- *   USD * 1.065
- *
- * Eso era incorrecto.
- *
- * Ahora:
- *
- *   rate_usd = tasa oficial USD/Bs
- *   rate_eur = tasa oficial EUR/Bs
- *
- * Ambas se obtienen independientemente.
- */
-interface ExchangeRate {
-  id: number;
-
-  rate_usd: number;
-  rate_eur: number;
-
-  rate_date: string;
-  source: string;
-  created_at: string;
-}
-
-interface DatabaseSchema {
-  budgets: Budget[];
-  cart_items: CartItem[];
-  shopping_history: HistoryRecord[];
-  community_prices: CommunityPrice[];
-  exchange_rates: ExchangeRate[];
-
-  next_budget_id: number;
-  next_cart_id: number;
-  next_history_id: number;
-  next_community_id: number;
-}
-
-interface LegacyExchangeRate {
-  id?: number;
-
-  /*
-   * Formato antiguo.
-   */
-  rate_usd?: number;
-
-  /*
-   * Formato nuevo.
-   */
-  rate_eur?: number;
-
-  rate_date?: string;
-  source?: string;
-  created_at?: string;
-}
-
-interface LegacyDatabaseSchema {
-  budget?: Budget;
-  budgets?: Budget[];
-
-  cart_items?: CartItem[];
-  shopping_history?: HistoryRecord[];
-  community_prices?: CommunityPrice[];
-
-  exchange_rates?: LegacyExchangeRate[];
-
-  next_budget_id?: number;
-  next_cart_id?: number;
-  next_history_id?: number;
-  next_community_id?: number;
-}
-
-/*
- * ============================================================
- * BASE DE DATOS
- * ============================================================
- */
-
-function createEmptyDatabase(): DatabaseSchema {
-  const now = new Date().toISOString();
-
-  return {
-    budgets: [],
-    cart_items: [],
-    shopping_history: [],
-    community_prices: [],
-
-    exchange_rates: [
-      {
-        id: 1,
-        rate_usd: DEFAULT_USD_RATE,
-        rate_eur: DEFAULT_EUR_RATE,
-        rate_date: now.split("T")[0],
-        source: "DolarApi - Oficial",
-        created_at: now,
-      },
-    ],
-
-    next_budget_id: 1,
-    next_cart_id: 1,
-    next_history_id: 1,
-    next_community_id: 1,
-  };
-}
-
-function normalizeDatabase(
-  raw: LegacyDatabaseSchema
-): DatabaseSchema {
-  const budgets = Array.isArray(raw.budgets)
-    ? raw.budgets
-    : raw.budget
-      ? [raw.budget]
-      : [];
-
-  const cartItems: CartItem[] = Array.isArray(
-    raw.cart_items
-  )
-    ? raw.cart_items.map(
-        (item): CartItem => ({
-          ...item,
-          currency:
-            item.currency === "EUR"
-              ? "EUR"
-              : "USD",
-        })
-      )
-    : [];
-
-  const history = Array.isArray(
-    raw.shopping_history
-  )
-    ? raw.shopping_history
-    : [];
-
-  const communityPrices =
-    Array.isArray(raw.community_prices)
-      ? raw.community_prices
-      : [];
-
-  const rawRates = Array.isArray(
-    raw.exchange_rates
-  )
-    ? raw.exchange_rates
-    : [];
-
-  /*
-   * Compatibilidad con bases anteriores.
-   *
-   * IMPORTANTE:
-   * No calculamos EUR a partir de USD.
-   *
-   * Si un registro antiguo no tiene rate_eur,
-   * utilizamos el valor de respaldo hasta que
-   * refreshExchangeRates() actualice ambas tasas.
-   */
-  const exchangeRates: ExchangeRate[] =
-    rawRates.length > 0
-      ? rawRates.map((record, index) => ({
-          id:
-            record.id ??
-            index + 1,
-
-          rate_usd:
-            Number.isFinite(
-              Number(record.rate_usd)
-            ) &&
-            Number(record.rate_usd) > 0
-              ? Number(record.rate_usd)
-              : DEFAULT_USD_RATE,
-
-          rate_eur:
-            Number.isFinite(
-              Number(record.rate_eur)
-            ) &&
-            Number(record.rate_eur) > 0
-              ? Number(record.rate_eur)
-              : DEFAULT_EUR_RATE,
-
-          rate_date:
-            record.rate_date ||
-            new Date()
-              .toISOString()
-              .split("T")[0],
-
-          source:
-            record.source ||
-            "DolarApi - Oficial",
-
-          created_at:
-            record.created_at ||
-            new Date().toISOString(),
-        }))
-      : createEmptyDatabase().exchange_rates;
-
-  return {
-    budgets,
-
-    cart_items: cartItems,
-
-    shopping_history: history,
-
-    community_prices: communityPrices,
-
-    exchange_rates: exchangeRates,
-
-    next_budget_id:
-      raw.next_budget_id ??
-      Math.max(
-        0,
-        ...budgets.map(
-          (budget) => budget.id || 0
-        )
-      ) + 1,
-
-    next_cart_id:
-      raw.next_cart_id ??
-      Math.max(
-        0,
-        ...cartItems.map(
-          (item) => item.id || 0
-        )
-      ) + 1,
-
-    next_history_id:
-      raw.next_history_id ??
-      Math.max(
-        0,
-        ...history.map(
-          (record) => record.id || 0
-        )
-      ) + 1,
-
-    next_community_id:
-      raw.next_community_id ??
-      Math.max(
-        0,
-        ...communityPrices.map(
-          (price) => price.id || 0
-        )
-      ) + 1,
-  };
-}
-
-function readDb(): DatabaseSchema {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const data = fs.readFileSync(
-        DB_FILE,
-        "utf-8"
-      );
-
-      return normalizeDatabase(
-        JSON.parse(data)
-      );
-    }
-  } catch (err) {
-    console.error(
-      "Error reading database file, using fallback:",
-      err
-    );
+  if (typeof userId === "string" && userId.trim()) {
+    return userId.trim();
   }
 
-  return createEmptyDatabase();
+  return "default_user";
 }
 
-function writeDb(
-  db: DatabaseSchema
-): void {
-  try {
-    fs.writeFileSync(
-      DB_FILE,
-      JSON.stringify(db, null, 2),
-      "utf-8"
-    );
-  } catch (err) {
-    console.error(
-      "Error writing database file:",
-      err
-    );
-  }
+// ==========================================================
+// UTILIDADES
+// ==========================================================
+
+function roundMoney(value: number): number {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
-/*
- * ============================================================
- * USUARIO
- * ============================================================
- */
-
-function getUserId(
-  req: Request
-): string {
-  const header = req
-    .header("X-User-ID")
-    ?.trim();
-
-  if (!header) {
-    return "user_default";
-  }
-
-  return header.slice(0, 200);
-}
-
-/*
- * ============================================================
- * TASAS
- * ============================================================
- */
-
-function getLatestExchangeRate(
-  db: DatabaseSchema
-): ExchangeRate {
-  const rates = db.exchange_rates;
-
-  if (
-    rates.length === 0
-  ) {
-    return createEmptyDatabase()
-      .exchange_rates[0];
-  }
-
-  return rates[rates.length - 1];
-}
-
-function getLatestUsdRate(
-  db: DatabaseSchema
-): number {
-  return (
-    getLatestExchangeRate(db)
-      .rate_usd ||
-    DEFAULT_USD_RATE
-  );
-}
-
-function getLatestEurRate(
-  db: DatabaseSchema
-): number {
-  return (
-    getLatestExchangeRate(db)
-      .rate_eur ||
-    DEFAULT_EUR_RATE
-  );
-}
-
-/*
- * Tasa activa del presupuesto.
- *
- * El presupuesto mantiene su comportamiento original:
- * "bcv" utiliza la tasa USD como referencia interna.
- *
- * La moneda concreta de cada producto se determina
- * mediante getCurrencyRate().
- */
-function getActiveRate(
-  db: DatabaseSchema,
-  budget: Budget
-): number {
-  return budget.tipo_tasa === "custom"
-    ? budget.tasa_custom
-    : getLatestUsdRate(db);
-}
-
-/*
- * Obtiene la tasa correcta para la moneda del producto.
- *
- * ESTA ES LA CORRECCIÓN PRINCIPAL.
- *
- * USD -> rate_usd
- * EUR -> rate_eur
- *
- * Nunca:
- *
- * EUR = USD * 1.065
- */
-function getCurrencyRate(
-  db: DatabaseSchema,
-  budget: Budget,
-  currency: Currency
-): number {
-  /*
-   * Para una tasa personalizada se conserva
-   * el comportamiento anterior.
-   */
-  if (
-    budget.tipo_tasa === "custom"
-  ) {
-    return budget.tasa_custom;
-  }
-
-  if (currency === "EUR") {
-    return getLatestEurRate(db);
-  }
-
-  return getLatestUsdRate(db);
-}
-
-/*
- * ============================================================
- * PRESUPUESTO
- * ============================================================
- */
-
-function createBudget(
-  db: DatabaseSchema,
-  userId: string
-): Budget {
-  const budget: Budget = {
-    id: db.next_budget_id++,
-    user_id: userId,
-
-    monto_bs: 0,
-
-    tipo_tasa: "bcv",
-
-    tasa_custom: DEFAULT_USD_RATE,
-
-    spent_bs: 0,
-
-    updated_at:
-      new Date().toISOString(),
-  };
-
-  db.budgets.push(budget);
-
-  return budget;
-}
-
-function getOrCreateBudget(
-  db: DatabaseSchema,
-  userId: string
-): Budget {
-  return (
-    db.budgets.find(
-      (budget) =>
-        budget.user_id === userId
-    ) ||
-    createBudget(db, userId)
-  );
-}
-
-/*
- * ============================================================
- * CARRITO
- * ============================================================
- */
-
-function getUserCart(
-  db: DatabaseSchema,
-  userId: string
-): CartItem[] {
-  return db.cart_items.filter(
-    (item) =>
-      item.user_id === userId
-  );
-}
-
-function recalculateSpentBs(
-  db: DatabaseSchema,
-  userId: string,
-  budget: Budget
-): number {
-  const totalBs =
-    getUserCart(db, userId).reduce(
-      (acc, item) => {
-        const rate =
-          item.rate_used ||
-          getCurrencyRate(
-            db,
-            budget,
-            item.currency
-          );
-
-        return (
-          acc +
-          item.price_usd *
-            item.quantity *
-            rate
-        );
-      },
-      0
-    );
-
-  const roundedSpent =
-    Math.round(
-      totalBs * 100
-    ) / 100;
-
-  budget.spent_bs =
-    roundedSpent;
-
-  return roundedSpent;
-}
-
-function buildBudgetResponse(
-  db: DatabaseSchema,
-  budget: Budget
-) {
-  const activeRate =
-    getActiveRate(
-      db,
-      budget
-    );
-
-  const remainingBs =
-    Math.max(
-      0,
-      Math.round(
-        (
-          budget.monto_bs -
-          budget.spent_bs
-        ) * 100
-      ) / 100
-    );
-
-  const safeRate =
-    activeRate > 0
-      ? activeRate
-      : DEFAULT_USD_RATE;
-
-  return {
-    ...budget,
-
-    active_rate:
-      safeRate,
-
-    remaining_bs:
-      remainingBs,
-
-    budget_usd:
-      Math.round(
-        (
-          budget.monto_bs /
-          safeRate
-        ) * 100
-      ) / 100,
-
-    spent_usd:
-      Math.round(
-        (
-          budget.spent_bs /
-          safeRate
-        ) * 100
-      ) / 100,
-
-    remaining_usd:
-      Math.round(
-        (
-          remainingBs /
-          safeRate
-        ) * 100
-      ) / 100,
-
-    percentage_remaining:
-      budget.monto_bs > 0
-        ? Math.max(
-            0,
-            Math.round(
-              (
-                (
-                  budget.monto_bs -
-                  budget.spent_bs
-                ) /
-                budget.monto_bs
-              ) * 100
-            )
-          )
-        : 0,
-  };
-}
-
-/*
- * ============================================================
- * UTILIDADES
- * ============================================================
- */
-
-function roundMoney(
-  value: number
-): number {
-  return (
-    Math.round(
-      value * 100
-    ) / 100
-  );
-}
-
-function normalizeProductKey(
-  product: string
-): string {
-  return product
-    .trim()
-    .toLocaleLowerCase("es-VE")
-    .normalize("NFD")
-    .replace(
-      /[\u0300-\u036f]/g,
-      ""
-    )
-    .replace(
-      /[^a-z0-9]+/g,
-      " "
-    )
-    .replace(
-      /\s+/g,
-      " "
-    )
-    .trim();
-}
-
-/*
- * ============================================================
- * PRECIOS COMUNITARIOS
- * ============================================================
- */
-
-function groupCommunityPrices(
-  prices: CommunityPrice[]
-): CommunityPriceGroup[] {
-  const grouped =
-    new Map<
-      string,
-      CommunityPrice[]
-    >();
-
-  for (const price of prices) {
-    const productKey =
-      normalizeProductKey(
-        price.product
-      ) ||
-      `product-${price.id}`;
-
-    const cityKey =
-      normalizeProductKey(
-        price.city
-      ) ||
-      "city-unknown";
-
-    const stateKey =
-      normalizeProductKey(
-        price.state
-      ) ||
-      "state-unknown";
-
-    const key =
-      `${productKey}|${cityKey}|${stateKey}`;
-
-    const current =
-      grouped.get(key) ||
-      [];
-
-    current.push(price);
-
-    grouped.set(
-      key,
-      current
-    );
-  }
-
-  return Array.from(
-    grouped.values()
-  ).map((group) => {
-    const offersByPrice =
-      [...group].sort(
-        (a, b) => {
-          if (
-            a.price_usd !==
-            b.price_usd
-          ) {
-            return (
-              a.price_usd -
-              b.price_usd
-            );
-          }
-
-          return (
-            new Date(
-              b.created_at
-            ).getTime() -
-            new Date(
-              a.created_at
-            ).getTime()
-          );
-        }
-      );
-
-    const lowestPriceUsd =
-      offersByPrice[0]
-        ?.price_usd || 0;
-
-    const usdTotal =
-      group.reduce(
-        (sum, price) =>
-          sum +
-          price.price_usd,
-        0
-      );
-
-    const bsTotal =
-      group.reduce(
-        (sum, price) =>
-          sum +
-          price.price_bs,
-        0
-      );
-
-    const latestReportAt =
-      group.reduce(
-        (
-          latest,
-          price
-        ) =>
-          new Date(
-            price.created_at
-          ).getTime() >
-          new Date(
-            latest
-          ).getTime()
-            ? price.created_at
-            : latest,
-        group[0].created_at
-      );
-
-    return {
-      product:
-        group[0].product,
-
-      city:
-        group[0].city,
-
-      state:
-        group[0].state,
-
-      lowest_price_usd:
-        roundMoney(
-          Math.min(
-            ...group.map(
-              (price) =>
-                price.price_usd
-            )
-          )
-        ),
-
-      highest_price_usd:
-        roundMoney(
-          Math.max(
-            ...group.map(
-              (price) =>
-                price.price_usd
-            )
-          )
-        ),
-
-      average_price_usd:
-        roundMoney(
-          usdTotal /
-            group.length
-        ),
-
-      lowest_price_bs:
-        roundMoney(
-          Math.min(
-            ...group.map(
-              (price) =>
-                price.price_bs
-            )
-          )
-        ),
-
-      highest_price_bs:
-        roundMoney(
-          Math.max(
-            ...group.map(
-              (price) =>
-                price.price_bs
-            )
-          )
-        ),
-
-      average_price_bs:
-        roundMoney(
-          bsTotal /
-            group.length
-        ),
-
-      reports:
-        group.length,
-
-      supermarkets:
-        new Set(
-          group.map(
-            (price) =>
-              price.supermarket
-                .trim()
-                .toLocaleLowerCase(
-                  "es-VE"
-                )
-          )
-        ).size,
-
-      latest_report_at:
-        latestReportAt,
-
-      offers:
-        offersByPrice.map(
-          (offer) => ({
-            ...offer,
-
-            is_lowest:
-              offer.price_usd ===
-              lowestPriceUsd,
-          })
-        ),
-    };
-  });
-}
-
-/*
- * ============================================================
- * CONSULTA AL BCV
- * ============================================================
- *
- * DolarApi dispone de endpoints independientes:
- *
- * USD:
- * /v1/dolares/oficial
- *
- * EUR:
- * /v1/euros/oficial
- *
- * Por lo tanto ya NO hacemos:
- *
- * EUR = USD * 1.065
- *
- * Las dos tasas se consultan independientemente.
- */
-
-interface DolarApiResponse {
-  promedio?: number;
-  compra?: number;
-  venta?: number;
-  fechaActualizacion?: string;
-  moneda?: string;
-  fuente?: string;
-  nombre?: string;
-}
-
-async function fetchJsonWithTimeout(
-  url: string,
-  timeoutMs = 10000
-): Promise<DolarApiResponse> {
-  const controller =
-    new AbortController();
-
-  const timeout =
-    setTimeout(
-      () =>
-        controller.abort(),
-      timeoutMs
-    );
-
-  try {
-    const response =
-      await fetch(url, {
-        signal:
-          controller.signal,
-
-        headers: {
-          Accept:
-            "application/json",
-        },
+// ==========================================================
+// TASAS DE CAMBIO
+// ==========================================================
+//
+// Estas tasas son solamente un respaldo en memoria.
+// La aplicación actualmente obtiene las tasas principalmente
+// mediante DolarApi.
+//
+// ==========================================================
+
+let currentRates = {
+  USD: {
+    rate: 784.66,
+    date: new Date().toISOString().split("T")[0],
+    source: "Rinde+ - respaldo",
+  },
+  EUR: {
+    rate: 916.0,
+    date: new Date().toISOString().split("T")[0],
+    source: "Rinde+ - respaldo",
+  },
+};
+
+// ----------------------------------------------------------
+// GET TASA
+// ----------------------------------------------------------
+
+app.get(
+  [
+    "/api/exchange-rate-public",
+    "/app-api/exchange-rate-public",
+  ],
+  async (req, res) => {
+    try {
+      const currency =
+        String(req.query.currency || "USD").toUpperCase();
+
+      if (currency !== "USD" && currency !== "EUR") {
+        return res.status(400).json({
+          error: "Moneda no válida",
+        });
+      }
+
+      const rate = currentRates[
+        currency as "USD" | "EUR"
+      ];
+
+      return res.json({
+        rate: rate.rate,
+        date: rate.date,
+        source: rate.source,
       });
-
-    if (!response.ok) {
-      throw new Error(
-        `DolarApi respondió con estado ${response.status}`
+    } catch (err) {
+      console.error(
+        "Error al obtener tasa:",
+        err
       );
+
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
     }
-
-    return (await response.json()) as DolarApiResponse;
-  } finally {
-    clearTimeout(timeout);
   }
-}
+);
 
-async function scrapeBcvRates(): Promise<{
-  usd: number | null;
-  eur: number | null;
-}> {
-  const usdUrl =
-    "https://ve.dolarapi.com/v1/dolares/oficial";
+// ----------------------------------------------------------
+// POST ACTUALIZAR TASA
+// ----------------------------------------------------------
 
-  const eurUrl =
-    "https://ve.dolarapi.com/v1/euros/oficial";
+app.post(
+  [
+    "/api/exchange-rate/fetch",
+    "/app-api/exchange-rate/fetch",
+  ],
+  async (req, res) => {
+    try {
+      const { bcv, eur } = req.body || {};
 
-  const [usdResult, eurResult] =
-    await Promise.allSettled([
-      fetchJsonWithTimeout(
-        usdUrl
-      ),
+      if (
+        bcv !== undefined &&
+        Number.isFinite(Number(bcv)) &&
+        Number(bcv) > 0
+      ) {
+        currentRates.USD = {
+          rate: Number(bcv),
+          date: new Date()
+            .toISOString()
+            .split("T")[0],
+          source: "Backend Rinde+",
+        };
+      }
 
-      fetchJsonWithTimeout(
-        eurUrl
-      ),
-    ]);
+      if (
+        eur !== undefined &&
+        Number.isFinite(Number(eur)) &&
+        Number(eur) > 0
+      ) {
+        currentRates.EUR = {
+          rate: Number(eur),
+          date: new Date()
+            .toISOString()
+            .split("T")[0],
+          source: "Backend Rinde+",
+        };
+      }
 
-  let usd: number | null =
-    null;
-
-  let eur: number | null =
-    null;
-
-  /*
-   * USD
-   */
-  if (
-    usdResult.status ===
-    "fulfilled"
-  ) {
-    const value =
-      Number(
-        usdResult.value
-          .promedio
+      return res.json({
+        success: true,
+        rates: currentRates,
+      });
+    } catch (err) {
+      console.error(
+        "Error al actualizar tasas:",
+        err
       );
 
-    if (
-      Number.isFinite(value) &&
-      value > 0
-    ) {
-      usd =
-        Math.round(
-          value * 100
-        ) / 100;
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
     }
-  } else {
-    console.error(
-      "Error consultando tasa USD:",
-      usdResult.reason
-    );
   }
+);
 
-  /*
-   * EUR
-   */
-  if (
-    eurResult.status ===
-    "fulfilled"
-  ) {
-    const value =
-      Number(
-        eurResult.value
-          .promedio
+// ==========================================================
+// PRESUPUESTO
+// ==========================================================
+
+// ----------------------------------------------------------
+// OBTENER PRESUPUESTO
+// ----------------------------------------------------------
+
+app.get(
+  [
+    "/api/budget",
+    "/app-api/budget",
+  ],
+  async (req, res) => {
+    try {
+      const userId = getUserId(req);
+
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM budgets
+        WHERE user_id = $1
+        LIMIT 1
+        `,
+        [userId]
       );
 
-    if (
-      Number.isFinite(value) &&
-      value > 0
-    ) {
-      eur =
-        Math.round(
-          value * 100
-        ) / 100;
+      if (result.rows.length === 0) {
+        return res.json({
+          monto_bs: 0,
+          tipo_tasa: "bcv",
+          tasa_custom: 0,
+          spent_bs: 0,
+        });
+      }
+
+      return res.json(result.rows[0]);
+    } catch (err) {
+      console.error(
+        "Error al obtener presupuesto:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
     }
-  } else {
-    console.error(
-      "Error consultando tasa EUR:",
-      eurResult.reason
-    );
   }
+);
 
-  return {
-    usd,
-    eur,
-  };
-}
+// ----------------------------------------------------------
+// GUARDAR PRESUPUESTO
+// ----------------------------------------------------------
 
-/*
- * Consulta DolarApi y guarda UNA sola entrada con las dos monedas.
- *
- * Esto evita el problema que ocurría al arrancar la aplicación:
- * el frontend podía leer primero una tasa EUR antigua (por ejemplo
- * 835.66) y solamente después terminar la actualización en segundo
- * plano.
- *
- * Cada consulta pública puede pedir una actualización fresca.
- */
-async function refreshAndStoreRates(
-  db: DatabaseSchema
-): Promise<ExchangeRate> {
-  const scraped = await scrapeBcvRates();
-  const previous = getLatestExchangeRate(db);
-
-  const usd =
-    scraped.usd ??
-    previous.rate_usd ??
-    DEFAULT_USD_RATE;
-
-  const eur =
-    scraped.eur ??
-    previous.rate_eur ??
-    DEFAULT_EUR_RATE;
-
-  const now = new Date();
-
-  const rateEntry: ExchangeRate = {
-    id:
-      Math.max(
-        0,
-        ...db.exchange_rates.map(
-          (record) => record.id || 0
-        )
-      ) + 1,
-
-    rate_usd: usd,
-    rate_eur: eur,
-
-    rate_date: now
-      .toISOString()
-      .split("T")[0],
-
-    source: "DolarApi - Oficial",
-    created_at: now.toISOString(),
-  };
-
-  /*
-   * Solo guardamos una nueva entrada cuando DolarApi respondió
-   * al menos una de las dos monedas. Si ambas consultas fallan,
-   * no fabricamos una actualización falsa.
-   */
-  if (
-    scraped.usd !== null ||
-    scraped.eur !== null
-  ) {
-    db.exchange_rates.push(rateEntry);
-    writeDb(db);
-
-    console.log(
-      `Tasas DolarApi actualizadas: USD Bs ${rateEntry.rate_usd} | EUR Bs ${rateEntry.rate_eur}`
-    );
-
-    return rateEntry;
-  }
-
-  return previous;
-}
-
-/*
- * ============================================================
- * SERVIDOR
- * ============================================================
- */
-
-async function startServer() {
-  const app =
-    express();
-
-  app.use(
-    cors({
-      origin: true,
-
-      allowedHeaders: [
-        "Content-Type",
-        "X-User-ID",
-      ],
-
-      methods: [
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "OPTIONS",
-      ],
-    })
-  );
-
-  app.use(
-    express.json()
-  );
-
-  /*
-   * ==========================================================
-   * PRESUPUESTO
-   * ==========================================================
-   */
-
-  app.get(
-    [
-      "/app-api/budget",
-      "/api/budget",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
-
-      const userId =
-        getUserId(req);
-
-      const budget =
-        getOrCreateBudget(
-          db,
-          userId
-        );
-
-      recalculateSpentBs(
-        db,
-        userId,
-        budget
-      );
-
-      writeDb(db);
-
-      res.json(
-        buildBudgetResponse(
-          db,
-          budget
-        )
-      );
-    }
-  );
-
-  app.post(
-    [
-      "/app-api/budget",
-      "/api/budget",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
-
-      const userId =
-        getUserId(req);
-
-      const budget =
-        getOrCreateBudget(
-          db,
-          userId
-        );
+app.post(
+  [
+    "/api/budget",
+    "/app-api/budget",
+  ],
+  async (req, res) => {
+    try {
+      const userId = getUserId(req);
 
       const {
         monto_bs,
@@ -1271,1040 +240,1150 @@ async function startServer() {
         tasa_custom,
       } = req.body;
 
-      if (
-        monto_bs !==
-        undefined
-      ) {
-        budget.monto_bs =
-          Math.max(
-            0,
-            Number.parseFloat(
-              monto_bs
-            ) || 0
-          );
-      }
-
-      if (
-        tipo_tasa === "bcv" ||
-        tipo_tasa === "custom"
-      ) {
-        budget.tipo_tasa =
-          tipo_tasa;
-      }
-
-      if (
-        tasa_custom !==
-        undefined
-      ) {
-        budget.tasa_custom =
-          Number.parseFloat(
-            tasa_custom
-          ) ||
-          getLatestUsdRate(
-            db
-          );
-      }
-
-      budget.updated_at =
-        new Date().toISOString();
-
-      recalculateSpentBs(
-        db,
-        userId,
-        budget
+      const result = await pool.query(
+        `
+        INSERT INTO budgets (
+          user_id,
+          monto_bs,
+          tipo_tasa,
+          tasa_custom,
+          spent_bs,
+          updated_at
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          0,
+          NOW()
+        )
+        ON CONFLICT (user_id)
+        DO UPDATE SET
+          monto_bs = EXCLUDED.monto_bs,
+          tipo_tasa = EXCLUDED.tipo_tasa,
+          tasa_custom = EXCLUDED.tasa_custom,
+          updated_at = NOW()
+        RETURNING *
+        `,
+        [
+          userId,
+          Number(monto_bs) || 0,
+          tipo_tasa || "bcv",
+          Number(tasa_custom) || 0,
+        ]
       );
 
-      writeDb(db);
+      return res.json(result.rows[0]);
+    } catch (err) {
+      console.error(
+        "Error al guardar presupuesto:",
+        err
+      );
 
-      res.json({
-        success: true,
-
-        budget:
-          buildBudgetResponse(
-            db,
-            budget
-          ),
+      return res.status(500).json({
+        error: "Error interno del servidor",
       });
     }
-  );
+  }
+);
 
-  /*
-   * ==========================================================
-   * CARRITO
-   * ==========================================================
-   */
+// ==========================================================
+// CARRITO
+// ==========================================================
 
-  app.get(
-    [
-      "/app-api/cart",
-      "/api/cart",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
+// ----------------------------------------------------------
+// OBTENER CARRITO
+// ----------------------------------------------------------
 
-      const userId =
-        getUserId(req);
+app.get(
+  [
+    "/api/cart",
+    "/app-api/cart",
+  ],
+  async (req, res) => {
+    try {
+      const userId = getUserId(req);
 
-      const budget =
-        getOrCreateBudget(
-          db,
-          userId
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM cart_items
+        WHERE user_id = $1
+        ORDER BY id DESC
+        `,
+        [userId]
+      );
+
+      const items = result.rows;
+
+      const total_items =
+        items.reduce(
+          (sum, item) =>
+            sum + Number(item.quantity || 0),
+          0
         );
 
-      const items =
-        getUserCart(
-          db,
-          userId
-        ).map((item) => {
-          /*
-           * MUY IMPORTANTE:
-           *
-           * Se utiliza rate_used guardado en el producto.
-           *
-           * Así una compra EUR no vuelve a utilizar
-           * la tasa USD actual.
-           */
-          const rate =
-            item.rate_used ||
-            getCurrencyRate(
-              db,
-              budget,
-              item.currency
-            );
+      const total_usd =
+        items.reduce(
+          (sum, item) =>
+            sum +
+            Number(item.price_usd || 0) *
+              Number(item.quantity || 0),
+          0
+        );
 
-          const priceBs =
-            roundMoney(
-              item.price_usd *
+      const total_bs =
+        items.reduce(
+          (sum, item) => {
+            const rate =
+              Number(item.rate_used) || 1;
+
+            return (
+              sum +
+              Number(item.price_usd || 0) *
+                Number(item.quantity || 0) *
                 rate
             );
-
-          const subtotalUsd =
-            roundMoney(
-              item.price_usd *
-                item.quantity
-            );
-
-          const subtotalBs =
-            roundMoney(
-              priceBs *
-                item.quantity
-            );
-
-          return {
-            ...item,
-
-            currency:
-              item.currency ||
-              "USD",
-
-            price_bs:
-              priceBs,
-
-            subtotal_usd:
-              subtotalUsd,
-
-            subtotal_bs:
-              subtotalBs,
-
-            rate_used:
-              rate,
-          };
-        });
-
-      const totalUsd =
-        roundMoney(
-          items.reduce(
-            (sum, item) =>
-              sum +
-              item.subtotal_usd,
-            0
-          )
+          },
+          0
         );
 
-      const totalBs =
-        roundMoney(
-          items.reduce(
-            (sum, item) =>
-              sum +
-              item.subtotal_bs,
-            0
-          )
+      // Obtener presupuesto
+      const budgetResult =
+        await pool.query(
+          `
+          SELECT *
+          FROM budgets
+          WHERE user_id = $1
+          LIMIT 1
+          `,
+          [userId]
         );
-
-      budget.spent_bs =
-        totalBs;
-
-      writeDb(db);
-
-      /*
-       * Para compatibilidad con el frontend:
-       *
-       * active_rate representa la tasa del primer
-       * producto si existe.
-       *
-       * En una compra normal todos los productos
-       * utilizan la misma moneda seleccionada.
-       */
-      const activeRate =
-        items[0]?.rate_used ||
-        getActiveRate(
-          db,
-          budget
-        );
-
-      res.json({
-        items,
-
-        total_items:
-          items.reduce(
-            (sum, item) =>
-              sum +
-              item.quantity,
-            0
-          ),
-
-        total_usd:
-          totalUsd,
-
-        total_bs:
-          totalBs,
-
-        active_rate:
-          activeRate,
-
-        remaining_bs:
-          Math.max(
-            0,
-            roundMoney(
-              budget.monto_bs -
-                totalBs
-            )
-          ),
-      });
-    }
-  );
-
-  app.post(
-    [
-      "/app-api/cart",
-      "/api/cart",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
-
-      const userId =
-        getUserId(req);
 
       const budget =
-        getOrCreateBudget(
-          db,
-          userId
-        );
+        budgetResult.rows[0];
+
+      const remaining_bs = budget
+        ? Number(budget.monto_bs || 0) -
+          Number(budget.spent_bs || 0) -
+          total_bs
+        : 0;
+
+      return res.json({
+        items,
+        total_items,
+        total_usd: roundMoney(total_usd),
+        total_bs: roundMoney(total_bs),
+        active_rate:
+          items.length > 0
+            ? Number(items[0].rate_used) || 1
+            : 0,
+        remaining_bs:
+          roundMoney(remaining_bs),
+      });
+    } catch (err) {
+      console.error(
+        "Error al obtener carrito:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
+    }
+  }
+);
+
+// ----------------------------------------------------------
+// AGREGAR PRODUCTO
+// ----------------------------------------------------------
+
+app.post(
+  [
+    "/api/cart",
+    "/app-api/cart",
+  ],
+  async (req, res) => {
+    try {
+      const userId = getUserId(req);
 
       const {
         name,
         price_usd,
         quantity,
         currency,
+        rate_used,
       } = req.body;
 
-      const selectedCurrency: Currency =
-        currency === "EUR"
-          ? "EUR"
-          : "USD";
-
-      /*
-       * AQUÍ SE CAPTURA LA TASA CORRECTA.
-       *
-       * EUR -> rate_eur
-       * USD -> rate_usd
-       */
-      const rateUsed =
-        getCurrencyRate(
-          db,
-          budget,
-          selectedCurrency
-        );
-
-      const newItem: CartItem = {
-        id:
-          db.next_cart_id++,
-
-        user_id:
+      const result = await pool.query(
+        `
+        INSERT INTO cart_items (
+          user_id,
+          name,
+          price_usd,
+          currency,
+          quantity,
+          rate_used
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6
+        )
+        RETURNING *
+        `,
+        [
           userId,
-
-        name:
-          name?.trim() ||
-          "Producto sin nombre",
-
-        price_usd:
-          Number.parseFloat(
-            price_usd
-          ) || 0,
-
-        currency:
-          selectedCurrency,
-
-        quantity:
-          Math.max(
-            1,
-            Number.parseInt(
-              quantity,
-              10
-            ) || 1
-          ),
-
-        rate_used:
-          rateUsed,
-
-        created_at:
-          new Date().toISOString(),
-      };
-
-      db.cart_items.push(
-        newItem
+          name,
+          Number(price_usd) || 0,
+          currency || "USD",
+          Number(quantity) || 1,
+          Number(rate_used) || 1,
+        ]
       );
 
-      recalculateSpentBs(
-        db,
-        userId,
-        budget
+      return res.json(
+        result.rows[0]
+      );
+    } catch (err) {
+      console.error(
+        "Error al agregar producto:",
+        err
       );
 
-      writeDb(db);
-
-      res.json({
-        success: true,
-        item: newItem,
+      return res.status(500).json({
+        error: "Error interno del servidor",
       });
     }
-  );
+  }
+);
 
-  app.put(
-    [
-      "/app-api/cart/:id",
-      "/api/cart/:id",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
+// ----------------------------------------------------------
+// ACTUALIZAR CANTIDAD
+// ----------------------------------------------------------
 
-      const userId =
-        getUserId(req);
+app.put(
+  [
+    "/api/cart/:id",
+    "/app-api/cart/:id",
+  ],
+  async (req, res) => {
+    try {
+      const userId = getUserId(req);
 
-      const id =
-        Number.parseInt(
-          req.params.id,
-          10
-        );
+      const id = Number(req.params.id);
 
       const quantity =
-        Math.max(
-          1,
-          Number.parseInt(
-            req.body.quantity,
-            10
-          ) || 1
-        );
-
-      const item =
-        db.cart_items.find(
-          (cartItem) =>
-            cartItem.id ===
-              id &&
-            cartItem.user_id ===
-              userId
-        );
-
-      if (!item) {
-        return res
-          .status(404)
-          .json({
-            error:
-              "Producto no encontrado",
-          });
-      }
-
-      item.quantity =
-        quantity;
-
-      const budget =
-        getOrCreateBudget(
-          db,
-          userId
-        );
-
-      recalculateSpentBs(
-        db,
-        userId,
-        budget
-      );
-
-      writeDb(db);
-
-      return res.json({
-        success: true,
-        item,
-      });
-    }
-  );
-
-  app.delete(
-    [
-      "/app-api/cart/:id",
-      "/api/cart/:id",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
-
-      const userId =
-        getUserId(req);
-
-      const id =
-        Number.parseInt(
-          req.params.id,
-          10
-        );
-
-      const originalLength =
-        db.cart_items.length;
-
-      db.cart_items =
-        db.cart_items.filter(
-          (item) =>
-            !(
-              item.id === id &&
-              item.user_id ===
-                userId
-            )
-        );
+        Number(req.body.quantity);
 
       if (
-        db.cart_items.length ===
-        originalLength
+        !Number.isFinite(id) ||
+        !Number.isFinite(quantity) ||
+        quantity <= 0
       ) {
-        return res
-          .status(404)
-          .json({
-            error:
-              "Producto no encontrado",
-          });
+        return res.status(400).json({
+          error: "Cantidad o ID inválido",
+        });
       }
 
-      const budget =
-        getOrCreateBudget(
-          db,
-          userId
-        );
-
-      recalculateSpentBs(
-        db,
-        userId,
-        budget
-      );
-
-      writeDb(db);
-
-      return res.json({
-        success: true,
-      });
-    }
-  );
-
-  app.delete(
-    [
-      "/app-api/cart",
-      "/api/cart",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
-
-      const userId =
-        getUserId(req);
-
-      db.cart_items =
-        db.cart_items.filter(
-          (item) =>
-            item.user_id !==
-            userId
-        );
-
-      const budget =
-        getOrCreateBudget(
-          db,
-          userId
-        );
-
-      recalculateSpentBs(
-        db,
-        userId,
-        budget
-      );
-
-      writeDb(db);
-
-      res.json({
-        success: true,
-      });
-    }
-  );
-
-  /*
-   * ==========================================================
-   * CHECKOUT
-   * ==========================================================
-   */
-
-  app.post(
-    [
-      "/app-api/cart/checkout",
-      "/api/cart/checkout",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
-
-      const userId =
-        getUserId(req);
-
-      const budget =
-        getOrCreateBudget(
-          db,
-          userId
-        );
-
-      const cartItems =
-        getUserCart(
-          db,
-          userId
-        );
-
-      if (
-        cartItems.length ===
-        0
-      ) {
-        return res
-          .status(400)
-          .json({
-            error:
-              "El carrito está vacío",
-          });
-      }
-
-      /*
-       * Cada producto conserva su propia tasa.
-       */
-      const items =
-        cartItems.map(
-          (item) => {
-            const rate =
-              item.rate_used ||
-              getCurrencyRate(
-                db,
-                budget,
-                item.currency
-              );
-
-            const priceBs =
-              roundMoney(
-                item.price_usd *
-                  rate
-              );
-
-            const subtotalUsd =
-              roundMoney(
-                item.price_usd *
-                  item.quantity
-              );
-
-            const subtotalBs =
-              roundMoney(
-                priceBs *
-                  item.quantity
-              );
-
-            return {
-              name:
-                item.name,
-
-              price_usd:
-                item.price_usd,
-
-              currency:
-                item.currency ||
-                "USD",
-
-              price_bs:
-                priceBs,
-
-              quantity:
-                item.quantity,
-
-              subtotal_usd:
-                subtotalUsd,
-
-              subtotal_bs:
-                subtotalBs,
-
-              rate_used:
-                rate,
-            };
-          }
-        );
-
-      const totalUsd =
-        roundMoney(
-          items.reduce(
-            (sum, item) =>
-              sum +
-              item.subtotal_usd,
-            0
-          )
-        );
-
-      const totalBs =
-        roundMoney(
-          items.reduce(
-            (sum, item) =>
-              sum +
-              item.subtotal_bs,
-            0
-          )
-        );
-
-      const remainingBs =
-        Math.max(
-          0,
-          roundMoney(
-            budget.monto_bs -
-              totalBs
-          )
-        );
-
-      const checkoutAt =
-        new Date().toISOString();
-
-      /*
-       * Para una compra normal de una sola moneda,
-       * esta será exactamente la tasa utilizada.
-       *
-       * Si posteriormente se permitieran productos
-       * mezclados USD/EUR, cada item conserva además
-       * su propia rate_used.
-       */
-      const historyRate =
-        items[0]?.rate_used ||
-        getActiveRate(
-          db,
-          budget
-        );
-
-      const record:
-        HistoryRecord = {
-        id:
-          db.next_history_id++,
-
-        user_id:
+      const result = await pool.query(
+        `
+        UPDATE cart_items
+        SET quantity = $1
+        WHERE id = $2
+          AND user_id = $3
+        RETURNING *
+        `,
+        [
+          quantity,
+          id,
           userId,
-
-        date:
-          checkoutAt,
-
-        total_bs:
-          totalBs,
-
-        total_usd:
-          totalUsd,
-
-        rate_used:
-          historyRate,
-
-        budget_bs:
-          budget.monto_bs,
-
-        remaining_bs:
-          remainingBs,
-
-        items,
-
-        created_at:
-          checkoutAt,
-      };
-
-      db.shopping_history.push(
-        record
+        ]
       );
 
-      db.cart_items =
-        db.cart_items.filter(
-          (item) =>
-            item.user_id !==
-            userId
-        );
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          error: "Producto no encontrado",
+        });
+      }
 
-      budget.monto_bs =
-        remainingBs;
+      return res.json(
+        result.rows[0]
+      );
+    } catch (err) {
+      console.error(
+        "Error al actualizar cantidad:",
+        err
+      );
 
-      budget.spent_bs =
-        0;
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
+    }
+  }
+);
 
-      budget.updated_at =
-        checkoutAt;
+// ----------------------------------------------------------
+// ELIMINAR PRODUCTO
+// ----------------------------------------------------------
 
-      writeDb(db);
+app.delete(
+  [
+    "/api/cart/:id",
+    "/app-api/cart/:id",
+  ],
+  async (req, res) => {
+    try {
+      const userId = getUserId(req);
+
+      const id = Number(req.params.id);
+
+      const result = await pool.query(
+        `
+        DELETE FROM cart_items
+        WHERE id = $1
+          AND user_id = $2
+        RETURNING id
+        `,
+        [id, userId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          error: "Producto no encontrado",
+        });
+      }
 
       return res.json({
         success: true,
+      });
+    } catch (err) {
+      console.error(
+        "Error al eliminar producto:",
+        err
+      );
 
-        record,
-
-        budget:
-          buildBudgetResponse(
-            db,
-            budget
-          ),
+      return res.status(500).json({
+        error: "Error interno del servidor",
       });
     }
-  );
+  }
+);
 
-  /*
-   * ==========================================================
-   * HISTORIAL
-   * ==========================================================
-   */
+// ==========================================================
+// CHECKOUT
+// ==========================================================
+//
+// IMPORTANTE:
+// apiService.ts actual llama a checkout()
+// sin enviar record ni budget.
+//
+// Por eso el servidor construye el registro
+// usando carrito + presupuesto de PostgreSQL.
+// ==========================================================
 
-  app.get(
-    [
-      "/app-api/history",
-      "/api/history",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
+app.post(
+  [
+    "/api/cart/checkout",
+    "/app-api/cart/checkout",
+  ],
+  async (req, res) => {
+    const client =
+      await pool.connect();
 
-      const userId =
-        getUserId(req);
+    try {
+      const userId = getUserId(req);
 
-      const history =
-        db.shopping_history
-          .filter(
-            (record) =>
-              record.user_id ===
-              userId
-          )
-          .sort(
-            (a, b) =>
-              new Date(
-                b.created_at
-              ).getTime() -
-              new Date(
-                a.created_at
-              ).getTime()
-          );
-
-      res.json(
-        history
+      await client.query(
+        "BEGIN"
       );
-    }
-  );
-  app.delete(
-    [
-      "/app-api/history/:id",
-      "/api/history/:id",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
 
-      const userId =
-        getUserId(req);
+      // -----------------------------------------------
+      // 1. Obtener carrito
+      // -----------------------------------------------
+
+      const cartResult =
+        await client.query(
+          `
+          SELECT *
+          FROM cart_items
+          WHERE user_id = $1
+          ORDER BY id ASC
+          `,
+          [userId]
+        );
+
+      if (
+        cartResult.rows.length === 0
+      ) {
+        await client.query(
+          "ROLLBACK"
+        );
+
+        return res.status(400).json({
+          error:
+            "El carrito está vacío",
+        });
+      }
+
+      const items =
+        cartResult.rows;
+
+      // -----------------------------------------------
+      // 2. Calcular totales
+      // -----------------------------------------------
+
+      const total_usd =
+        items.reduce(
+          (sum, item) =>
+            sum +
+            Number(item.price_usd || 0) *
+              Number(item.quantity || 0),
+          0
+        );
+
+      const total_bs =
+        items.reduce(
+          (sum, item) =>
+            sum +
+            Number(item.price_usd || 0) *
+              Number(item.quantity || 0) *
+              (Number(item.rate_used) || 1),
+          0
+        );
+
+      const rate_used =
+        items.length > 0
+          ? Number(items[0].rate_used) || 1
+          : 1;
+
+      // -----------------------------------------------
+      // 3. Obtener presupuesto
+      // -----------------------------------------------
+
+      const budgetResult =
+        await client.query(
+          `
+          SELECT *
+          FROM budgets
+          WHERE user_id = $1
+          LIMIT 1
+          `,
+          [userId]
+        );
+
+      const budget =
+        budgetResult.rows[0];
+
+      const budget_bs =
+        budget
+          ? Number(budget.monto_bs || 0)
+          : 0;
+
+      const previousSpent =
+        budget
+          ? Number(budget.spent_bs || 0)
+          : 0;
+
+      const newSpent =
+        previousSpent + total_bs;
+
+      const remaining_bs =
+        budget_bs - newSpent;
+
+      // -----------------------------------------------
+      // 4. Preparar items para historial
+      // -----------------------------------------------
+
+      const historyItems =
+        items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          price_usd:
+            Number(item.price_usd) || 0,
+          quantity:
+            Number(item.quantity) || 1,
+          currency:
+            item.currency || "USD",
+          rate_used:
+            Number(item.rate_used) || 1,
+        }));
+
+      // -----------------------------------------------
+      // 5. Guardar historial
+      // -----------------------------------------------
+
+      const historyResult =
+        await client.query(
+          `
+          INSERT INTO shopping_history (
+            user_id,
+            date,
+            total_bs,
+            total_usd,
+            rate_used,
+            budget_bs,
+            remaining_bs,
+            items
+          )
+          VALUES (
+            $1,
+            NOW(),
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7
+          )
+          RETURNING *
+          `,
+          [
+            userId,
+            roundMoney(total_bs),
+            roundMoney(total_usd),
+            rate_used,
+            roundMoney(budget_bs),
+            roundMoney(remaining_bs),
+            JSON.stringify(
+              historyItems
+            ),
+          ]
+        );
+
+      // -----------------------------------------------
+      // 6. Actualizar presupuesto
+      // -----------------------------------------------
+
+      if (budget) {
+        await client.query(
+          `
+          UPDATE budgets
+          SET spent_bs = $1,
+              updated_at = NOW()
+          WHERE user_id = $2
+          `,
+          [
+            roundMoney(newSpent),
+            userId,
+          ]
+        );
+      }
+
+      // -----------------------------------------------
+      // 7. Vaciar carrito
+      // -----------------------------------------------
+
+      await client.query(
+        `
+        DELETE FROM cart_items
+        WHERE user_id = $1
+        `,
+        [userId]
+      );
+
+      await client.query(
+        "COMMIT"
+      );
+
+      return res.json({
+        success: true,
+        record:
+          historyResult.rows[0],
+      });
+    } catch (err) {
+      await client.query(
+        "ROLLBACK"
+      );
+
+      console.error(
+        "Error en checkout:",
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          "Error al procesar la compra",
+      });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+// ==========================================================
+// HISTORIAL
+// ==========================================================
+
+// ----------------------------------------------------------
+// OBTENER HISTORIAL
+// ----------------------------------------------------------
+
+app.get(
+  [
+    "/api/history",
+    "/app-api/history",
+  ],
+  async (req, res) => {
+    try {
+      const userId = getUserId(req);
+
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM shopping_history
+        WHERE user_id = $1
+        ORDER BY date DESC
+        `,
+        [userId]
+      );
+
+      return res.json(
+        result.rows
+      );
+    } catch (err) {
+      console.error(
+        "Error al obtener historial:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
+    }
+  }
+);
+
+// ----------------------------------------------------------
+// ELIMINAR REGISTRO
+// ----------------------------------------------------------
+
+app.delete(
+  [
+    "/api/history/:id",
+    "/app-api/history/:id",
+  ],
+  async (req, res) => {
+    try {
+      const userId = getUserId(req);
 
       const id =
-        Number.parseInt(
-          req.params.id,
-          10
-        );
+        Number(req.params.id);
 
-      const originalLength =
-        db.shopping_history.length;
-
-      db.shopping_history =
-        db.shopping_history.filter(
-          (record) =>
-            !(
-              record.id === id &&
-              record.user_id ===
-                userId
-            )
+      const result =
+        await pool.query(
+          `
+          DELETE FROM shopping_history
+          WHERE id = $1
+            AND user_id = $2
+          RETURNING id
+          `,
+          [
+            id,
+            userId,
+          ]
         );
 
       if (
-        db.shopping_history.length ===
-        originalLength
+        result.rows.length === 0
       ) {
-        return res
-          .status(404)
-          .json({
-            error:
-              "Compra no encontrada",
-          });
+        return res.status(404).json({
+          error:
+            "Compra no encontrada",
+        });
       }
-
-      writeDb(db);
 
       return res.json({
         success: true,
       });
-    }
-  );
-
-  app.delete(
-    [
-      "/app-api/history",
-      "/api/history",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
-
-      const userId =
-        getUserId(req);
-
-      db.shopping_history =
-        db.shopping_history.filter(
-          (record) =>
-            record.user_id !==
-            userId
-        );
-
-      writeDb(db);
-
-      return res.json({
-        success: true,
-      });
-    }
-  );
-  /*
-   * ==========================================================
-   * PRECIOS COMUNITARIOS
-   * ==========================================================
-   */
-
-  app.get(
-    [
-      "/app-api/community-prices",
-      "/api/community-prices",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
-
-      const product =
-        String(
-          req.query.product ||
-            ""
-        ).toLowerCase();
-
-      const city =
-        String(
-          req.query.city ||
-            ""
-        ).toLowerCase();
-
-      const state =
-        String(
-          req.query.state ||
-            ""
-        ).toLowerCase();
-
-      const sort =
-        String(
-          req.query.sort ||
-            "newest"
-        );
-
-      let prices =
-        [...db.community_prices];
-
-      if (product) {
-        prices =
-          prices.filter(
-            (price) =>
-              normalizeProductKey(
-                price.product
-              ).includes(
-                product
-              )
-          );
-      }
-
-      if (city) {
-        prices =
-          prices.filter(
-            (price) =>
-              normalizeProductKey(
-                price.city
-              ).includes(
-                city
-              )
-          );
-      }
-
-      if (state) {
-        prices =
-          prices.filter(
-            (price) =>
-              normalizeProductKey(
-                price.state
-              ).includes(
-                state
-              )
-          );
-      }
-
-      if (
-        sort ===
-        "price_asc"
-      ) {
-        prices.sort(
-          (a, b) =>
-            a.price_usd -
-            b.price_usd
-        );
-      } else if (
-        sort ===
-        "price_desc"
-      ) {
-        prices.sort(
-          (a, b) =>
-            b.price_usd -
-            a.price_usd
-        );
-      } else {
-        prices.sort(
-          (a, b) =>
-            new Date(
-              b.created_at
-            ).getTime() -
-            new Date(
-              a.created_at
-            ).getTime()
-        );
-      }
-
-      res.json(
-        prices
+    } catch (err) {
+      console.error(
+        "Error al eliminar historial:",
+        err
       );
+
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
     }
-  );
+  }
+);
 
-  app.get(
-    [
-      "/app-api/community-prices/grouped",
-      "/api/community-prices/grouped",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
+// ----------------------------------------------------------
+// VACIAR HISTORIAL
+// ----------------------------------------------------------
 
-      const product =
-        normalizeProductKey(
-          String(
-            req.query.product ||
-              ""
-          )
+app.delete(
+  [
+    "/api/history",
+    "/app-api/history",
+  ],
+  async (req, res) => {
+    try {
+      const userId = getUserId(req);
+
+      await pool.query(
+        `
+        DELETE FROM shopping_history
+        WHERE user_id = $1
+        `,
+        [userId]
+      );
+
+      return res.json({
+        success: true,
+      });
+    } catch (err) {
+      console.error(
+        "Error al vaciar historial:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
+    }
+  }
+);
+
+// ==========================================================
+// COMUNIDAD
+// ==========================================================
+
+// ----------------------------------------------------------
+// OBTENER PRECIOS
+// ----------------------------------------------------------
+
+app.get(
+  [
+    "/api/community-prices",
+    "/app-api/community-prices",
+  ],
+  async (req, res) => {
+    try {
+      const {
+        product,
+        city,
+        state,
+        sort,
+      } = req.query;
+
+      const values: any[] = [];
+
+      const conditions: string[] = [];
+
+      if (
+        typeof product === "string" &&
+        product.trim()
+      ) {
+        values.push(
+          `%${product.trim()}%`
         );
 
-      const city =
-        normalizeProductKey(
-          String(
-            req.query.city ||
-              ""
-          )
+        conditions.push(
+          `LOWER(product) LIKE LOWER($${values.length})`
+        );
+      }
+
+      if (
+        typeof city === "string" &&
+        city.trim()
+      ) {
+        values.push(
+          `%${city.trim()}%`
         );
 
-      const state =
-        normalizeProductKey(
-          String(
-            req.query.state ||
-              ""
-          )
+        conditions.push(
+          `LOWER(city) LIKE LOWER($${values.length})`
+        );
+      }
+
+      if (
+        typeof state === "string" &&
+        state.trim()
+      ) {
+        values.push(
+          `%${state.trim()}%`
         );
 
-      const sort =
-        String(
-          req.query.sort ||
-            "recent"
+        conditions.push(
+          `LOWER(state) LIKE LOWER($${values.length})`
         );
+      }
 
-      let prices =
-        [...db.community_prices];
+      let query = `
+        SELECT *
+        FROM community_prices
+      `;
 
-      if (product) {
-        prices =
-          prices.filter(
-            (price) =>
-              normalizeProductKey(
-                price.product
-              ).includes(
-                product
-              )
+      if (
+        conditions.length > 0
+      ) {
+        query +=
+          " WHERE " +
+          conditions.join(
+            " AND "
           );
       }
 
-      if (city) {
-        prices =
-          prices.filter(
-            (price) =>
-              normalizeProductKey(
-                price.city
-              ).includes(
-                city
-              )
+      if (
+        sort === "price_asc"
+      ) {
+        query +=
+          " ORDER BY price_usd ASC";
+      } else if (
+        sort === "price_desc"
+      ) {
+        query +=
+          " ORDER BY price_usd DESC";
+      } else {
+        query +=
+          " ORDER BY created_at DESC";
+      }
+
+      const result =
+        await pool.query(
+          query,
+          values
+        );
+
+      return res.json(
+        result.rows
+      );
+    } catch (err) {
+      console.error(
+        "Error al obtener precios comunitarios:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
+    }
+  }
+);
+
+// ----------------------------------------------------------
+// PRECIOS AGRUPADOS
+// ----------------------------------------------------------
+
+app.get(
+  [
+    "/api/community-prices/grouped",
+    "/app-api/community-prices/grouped",
+  ],
+  async (req, res) => {
+    try {
+      const {
+        product,
+        city,
+        state,
+        sort,
+      } = req.query;
+
+      const values: any[] = [];
+
+      const conditions: string[] = [];
+
+      if (
+        typeof product === "string" &&
+        product.trim()
+      ) {
+        values.push(
+          `%${product.trim()}%`
+        );
+
+        conditions.push(
+          `LOWER(product) LIKE LOWER($${values.length})`
+        );
+      }
+
+      if (
+        typeof city === "string" &&
+        city.trim()
+      ) {
+        values.push(
+          `%${city.trim()}%`
+        );
+
+        conditions.push(
+          `LOWER(city) LIKE LOWER($${values.length})`
+        );
+      }
+
+      if (
+        typeof state === "string" &&
+        state.trim()
+      ) {
+        values.push(
+          `%${state.trim()}%`
+        );
+
+        conditions.push(
+          `LOWER(state) LIKE LOWER($${values.length})`
+        );
+      }
+
+      let query = `
+        SELECT *
+        FROM community_prices
+      `;
+
+      if (
+        conditions.length > 0
+      ) {
+        query +=
+          " WHERE " +
+          conditions.join(
+            " AND "
           );
       }
 
-      if (state) {
-        prices =
-          prices.filter(
-            (price) =>
-              normalizeProductKey(
-                price.state
-              ).includes(
-                state
-              )
-          );
-      }
+      query +=
+        " ORDER BY created_at DESC";
+
+      const result =
+        await pool.query(
+          query,
+          values
+        );
+
+      // -----------------------------------------------
+      // Agrupar por producto
+      // -----------------------------------------------
 
       const groups =
-        groupCommunityPrices(
-          prices
+        new Map<string, any>();
+
+      for (
+        const row of result.rows
+      ) {
+        const key =
+          String(row.product)
+            .trim()
+            .toLowerCase();
+
+        if (!groups.has(key)) {
+          groups.set(
+            key,
+            {
+              product:
+                row.product,
+
+              lowest_price_usd:
+                Number(
+                  row.price_usd
+                ),
+
+              highest_price_usd:
+                Number(
+                  row.price_usd
+                ),
+
+              average_price_usd:
+                Number(
+                  row.price_usd
+                ),
+
+              lowest_price_bs:
+                Number(
+                  row.price_bs
+                ),
+
+              highest_price_bs:
+                Number(
+                  row.price_bs
+                ),
+
+              average_price_bs:
+                Number(
+                  row.price_bs
+                ),
+
+              reports: 1,
+
+              supermarkets: 1,
+
+              latest_report_at:
+                row.created_at,
+
+              offers: [
+                {
+                  ...row,
+                  is_lowest: true,
+                },
+              ],
+            }
+          );
+
+          continue;
+        }
+
+        const group =
+          groups.get(key);
+
+        const priceUsd =
+          Number(row.price_usd);
+
+        const priceBs =
+          Number(row.price_bs);
+
+        group.lowest_price_usd =
+          Math.min(
+            group.lowest_price_usd,
+            priceUsd
+          );
+
+        group.highest_price_usd =
+          Math.max(
+            group.highest_price_usd,
+            priceUsd
+          );
+
+        group.lowest_price_bs =
+          Math.min(
+            group.lowest_price_bs,
+            priceBs
+          );
+
+        group.highest_price_bs =
+          Math.max(
+            group.highest_price_bs,
+            priceBs
+          );
+
+        group.reports += 1;
+
+        if (
+          !group.supermarketNames
+        ) {
+          group.supermarketNames =
+            new Set<string>();
+        }
+
+        group.supermarketNames.add(
+          String(row.supermarket)
         );
 
+        group.supermarkets =
+          group.supermarketNames.size;
+
+        group.offers.push({
+          ...row,
+          is_lowest:
+            priceUsd ===
+            group.lowest_price_usd,
+        });
+
+        const latest =
+          new Date(
+            group.latest_report_at
+          ).getTime();
+
+        const current =
+          new Date(
+            row.created_at
+          ).getTime();
+
+        if (
+          current > latest
+        ) {
+          group.latest_report_at =
+            row.created_at;
+        }
+      }
+
+      const finalGroups =
+        Array.from(
+          groups.values()
+        ).map((group) => {
+          const prices =
+            group.offers.map(
+              (offer: any) =>
+                Number(
+                  offer.price_usd
+                )
+            );
+
+          const pricesBs =
+            group.offers.map(
+              (offer: any) =>
+                Number(
+                  offer.price_bs
+                )
+            );
+
+          group.average_price_usd =
+            prices.reduce(
+              (a: number, b: number) =>
+                a + b,
+              0
+            ) / prices.length;
+
+          group.average_price_bs =
+            pricesBs.reduce(
+              (a: number, b: number) =>
+                a + b,
+              0
+            ) / pricesBs.length;
+
+          group.lowest_price_usd =
+            roundMoney(
+              group.lowest_price_usd
+            );
+
+          group.highest_price_usd =
+            roundMoney(
+              group.highest_price_usd
+            );
+
+          group.average_price_usd =
+            roundMoney(
+              group.average_price_usd
+            );
+
+          group.lowest_price_bs =
+            roundMoney(
+              group.lowest_price_bs
+            );
+
+          group.highest_price_bs =
+            roundMoney(
+              group.highest_price_bs
+            );
+
+          group.average_price_bs =
+            roundMoney(
+              group.average_price_bs
+            );
+
+          delete group.supermarketNames;
+
+          return group;
+        });
+
       if (
-        sort ===
-        "price_asc"
+        sort === "price_asc"
       ) {
-        groups.sort(
+        finalGroups.sort(
           (a, b) =>
             a.lowest_price_usd -
             b.lowest_price_usd
         );
       } else if (
-        sort ===
-        "price_desc"
+        sort === "price_desc"
       ) {
-        groups.sort(
+        finalGroups.sort(
           (a, b) =>
             b.lowest_price_usd -
             a.lowest_price_usd
         );
       } else {
-        groups.sort(
+        finalGroups.sort(
           (a, b) =>
             new Date(
               b.latest_report_at
@@ -2315,371 +1394,228 @@ async function startServer() {
         );
       }
 
-      res.json(
-        groups
+      return res.json(
+        finalGroups
       );
+    } catch (err) {
+      console.error(
+        "Error al obtener precios agrupados:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
     }
-  );
+  }
+);
 
-  app.post(
-    [
-      "/app-api/community-prices",
-      "/api/community-prices",
-    ],
-    (req, res) => {
-      const db =
-        readDb();
+// ----------------------------------------------------------
+// PUBLICAR PRECIO EN COMUNIDAD
+// ----------------------------------------------------------
 
+app.post(
+  [
+    "/api/community-prices",
+    "/app-api/community-prices",
+  ],
+  async (req, res) => {
+    try {
       const {
         product,
         price_usd,
+        price_bs,
         supermarket,
         city,
         state,
         user_name,
+        user_email,
       } = req.body;
 
       const priceUsd =
-        Number.parseFloat(
-          price_usd
-        ) || 0;
+        Number(price_usd) || 0;
 
-      /*
-       * Los precios comunitarios continúan utilizando
-       * la tasa USD, tal como funcionaba anteriormente.
-       */
-      const activeRate =
-        getLatestUsdRate(
-          db
-        );
+      const priceBs =
+        Number(price_bs) || 0;
 
-      const newPrice:
-        CommunityPrice = {
-        id:
-          db.next_community_id++,
-
-        product:
-          product?.trim() ||
-          "Producto sin nombre",
-
-        price_usd:
-          priceUsd,
-
-        price_bs:
-          roundMoney(
-            priceUsd *
-              activeRate
-          ),
-
-        supermarket:
-          supermarket?.trim() ||
-          "No especificado",
-
-        city:
-          city?.trim() ||
-          "No especificada",
-
-        state:
-          state?.trim() ||
-          "No especificado",
-
-        user_name:
-          user_name?.trim() ||
-          "Anónimo",
-
-        created_at:
-          new Date().toISOString(),
-      };
-
-      db.community_prices.push(
-        newPrice
-      );
-
-      writeDb(db);
-
-      res.json({
-        success: true,
-        price: newPrice,
-      });
-    }
-  );
-
-  /*
-   * ==========================================================
-   * TASA DE CAMBIO - CONSULTA PÚBLICA
-   * ==========================================================
-   *
-   * Compatibilidad:
-   *
-   * GET /exchange-rate-public
-   * GET /exchange-rate-public?currency=USD
-   * GET /exchange-rate-public?currency=EUR
-   *
-   * La respuesta incluye ambas tasas.
-   *
-   * "rate" corresponde a la moneda solicitada.
-   */
-
-  app.get(
-    [
-      "/app-api/exchange-rate-public",
-      "/api/exchange-rate-public",
-    ],
-    async (req, res) => {
-      try {
-        const db = readDb();
-
-        /*
-         * IMPORTANTE:
-         *
-         * No devolvemos directamente el último registro guardado.
-         * Al abrir Rinde+ podía existir una tasa EUR antigua en
-         * db_rinde.json y el frontend la recibía antes de que la
-         * actualización automática terminara.
-         *
-         * Ahora la consulta pública actualiza primero USD y EUR
-         * desde DolarApi - Oficial y luego responde.
-         */
-        const latest =
-          await refreshAndStoreRates(db);
-
-        const requestedCurrency =
-          String(
-            req.query.currency ||
-              "USD"
-          ).toUpperCase();
-
-        const currency: Currency =
-          requestedCurrency === "EUR"
-            ? "EUR"
-            : "USD";
-
-        const selectedRate =
-          currency === "EUR"
-            ? latest.rate_eur
-            : latest.rate_usd;
-
-        res.setHeader(
-          "Cache-Control",
-          "no-store, no-cache, must-revalidate, proxy-revalidate"
-        );
-
-        return res.json({
-          success: true,
-
-          /* Tasa correspondiente a la moneda solicitada. */
-          rate: selectedRate,
-
-          /* Ambas tasas para las versiones nuevas de api.ts. */
-          rate_usd: latest.rate_usd,
-          rate_eur: latest.rate_eur,
-
-          usd: latest.rate_usd,
-          eur: latest.rate_eur,
-
-          currency,
-          date: latest.rate_date,
-          source: latest.source,
-          last_updated: latest.created_at,
-        });
-      } catch (error) {
-        console.error(
-          "Error obteniendo tasas desde DolarApi:",
-          error
-        );
-
-        /*
-         * Si DolarApi no responde, devolvemos la última tasa
-         * persistida para que la aplicación siga funcionando.
-         */
-        const db = readDb();
-        const latest =
-          getLatestExchangeRate(db);
-
-        const requestedCurrency =
-          String(
-            req.query.currency ||
-              "USD"
-          ).toUpperCase();
-
-        const currency: Currency =
-          requestedCurrency === "EUR"
-            ? "EUR"
-            : "USD";
-
-        const selectedRate =
-          currency === "EUR"
-            ? latest.rate_eur
-            : latest.rate_usd;
-
-        res.setHeader(
-          "Cache-Control",
-          "no-store"
-        );
-
-        return res.json({
-          success: false,
-          rate: selectedRate,
-          rate_usd: latest.rate_usd,
-          rate_eur: latest.rate_eur,
-          usd: latest.rate_usd,
-          eur: latest.rate_eur,
-          currency,
-          date: latest.rate_date,
-          source: latest.source,
-          last_updated: latest.created_at,
-          fallback: true,
-        });
-      }
-    }
-  );
-
-  /*
-   * ==========================================================
-   * ACTUALIZAR TASAS BCV
-   * ==========================================================
-   *
-   * Obtiene USD y EUR INDEPENDIENTEMENTE.
-   */
-
-  app.post(
-    [
-      "/app-api/exchange-rate/fetch",
-      "/api/exchange-rate/fetch",
-    ],
-    async (req, res) => {
-      try {
-        const db = readDb();
-        const latest =
-          await refreshAndStoreRates(db);
-
-        res.setHeader(
-          "Cache-Control",
-          "no-store"
-        );
-
-        return res.json({
-          success: true,
-          rate: latest.rate_usd,
-          rate_usd: latest.rate_usd,
-          rate_eur: latest.rate_eur,
-          usd: latest.rate_usd,
-          eur: latest.rate_eur,
-          date: latest.rate_date,
-          source: latest.source,
-        });
-      } catch (error) {
-        console.error(
-          "Error actualizando tasas desde DolarApi:",
-          error
-        );
-
-        const db = readDb();
-        const latest =
-          getLatestExchangeRate(db);
-
-        return res.status(503).json({
-          success: false,
+      if (
+        !product ||
+        priceUsd <= 0
+      ) {
+        return res.status(400).json({
           error:
-            "No fue posible actualizar las tasas desde DolarApi.",
-          rate: latest.rate_usd,
-          rate_usd: latest.rate_usd,
-          rate_eur: latest.rate_eur,
-          usd: latest.rate_usd,
-          eur: latest.rate_eur,
-          date: latest.rate_date,
-          source: latest.source,
+            "Producto y precio son obligatorios",
         });
       }
+
+      const result =
+        await pool.query(
+          `
+          INSERT INTO community_prices (
+            product,
+            price_usd,
+            price_bs,
+            supermarket,
+            city,
+            state,
+            user_name,
+            user_email,
+            created_at
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            NOW()
+          )
+          RETURNING *
+          `,
+          [
+            product.trim(),
+            priceUsd,
+            priceBs,
+            supermarket?.trim() ||
+              "No especificado",
+            city?.trim() ||
+              "No especificada",
+            state?.trim() ||
+              "No especificado",
+            user_name?.trim() ||
+              "Anónimo",
+            user_email?.trim() ||
+              null,
+          ]
+        );
+
+      return res.json(
+        result.rows[0]
+      );
+    } catch (err) {
+      console.error(
+        "Error al registrar precio comunitario:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
     }
+  }
+);
+
+// ----------------------------------------------------------
+// ELIMINAR PRECIO COMUNITARIO
+// ----------------------------------------------------------
+
+app.delete(
+  [
+    "/api/community-prices/:id",
+    "/app-api/community-prices/:id",
+  ],
+  async (req, res) => {
+    try {
+      const id =
+        Number(req.params.id);
+
+      const result =
+        await pool.query(
+          `
+          DELETE FROM community_prices
+          WHERE id = $1
+          RETURNING id
+          `,
+          [id]
+        );
+
+      if (
+        result.rows.length === 0
+      ) {
+        return res.status(404).json({
+          error:
+            "Precio no encontrado",
+        });
+      }
+
+      return res.json({
+        success: true,
+      });
+    } catch (err) {
+      console.error(
+        "Error al eliminar precio comunitario:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Error interno del servidor",
+      });
+    }
+  }
+);
+
+// ==========================================================
+// PRUEBA DE CONEXIÓN
+// ==========================================================
+
+app.get(
+  [
+    "/api/health",
+    "/app-api/health",
+  ],
+  async (req, res) => {
+    try {
+      const result =
+        await pool.query(
+          "SELECT NOW() AS now"
+        );
+
+      return res.json({
+        success: true,
+        database: "connected",
+        timestamp:
+          result.rows[0].now,
+      });
+    } catch (err) {
+      console.error(
+        "Error en health check:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        database: "disconnected",
+      });
+    }
+  }
+);
+
+// ==========================================================
+// INICIO
+// ==========================================================
+
+app.listen(PORT, () => {
+  console.log(
+    `🚀 Rinde+ server corriendo en puerto ${PORT}`
   );
 
-  /*
-   * ==========================================================
-   * ACTUALIZACIÓN AUTOMÁTICA INICIAL
-   * ==========================================================
-   *
-   * Se ejecuta en segundo plano.
-   *
-   * NO bloquea el arranque del servidor.
-   *
-   * Esto permite que, al arrancar Rinde+, el servidor
-   * pueda actualizar USD y EUR sin obligar a la interfaz
-   * a esperar.
-   */
-
-  void (async () => {
-    try {
-      console.log(
-        "Actualizando tasas DolarApi USD/EUR en segundo plano..."
-      );
-
-      const db = readDb();
-      await refreshAndStoreRates(db);
-    } catch (error) {
-      console.error(
-        "Error en actualización automática de tasas DolarApi:",
-        error
-      );
-    }
-  })();
-
-  /*
-   * ==========================================================
-   * VITE / PRODUCCIÓN
-   * ==========================================================
-   */
-
-  if (
-    process.env.NODE_ENV !==
-    "production"
-  ) {
-    const vite =
-      await createViteServer({
-        server: {
-          middlewareMode:
-            true,
-        },
-
-        appType:
-          "custom",
-      });
-
-    app.use(
-      vite.middlewares
-    );
-  } else {
-    app.use(
-      express.static(
-        path.join(
-          process.cwd(),
-          "dist"
-        )
-      )
-    );
-
-    app.get(
-      "*",
-      (req, res) => {
-        res.sendFile(
-          path.join(
-            process.cwd(),
-            "dist",
-            "index.html"
-          )
+  pool.query(
+    "SELECT NOW() AS now",
+    (err, result) => {
+      if (err) {
+        console.error(
+          "❌ Error de conexión a PostgreSQL:",
+          err
+        );
+      } else {
+        console.log(
+          "✅ Conectado exitosamente a Supabase PostgreSQL:",
+          result.rows[0].now
         );
       }
-    );
-  }
-
-  app.listen(
-    PORT,
-    () => {
-      console.log(
-        `Servidor corriendo en el puerto ${PORT}`
-      );
     }
   );
-}
-
-startServer();
+});
