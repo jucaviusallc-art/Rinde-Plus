@@ -15,7 +15,7 @@ import {
 } from "./types";
 
 import { apiService } from "./services/api";
-
+import { getCurrentUser } from "./services/auth";
 import { Header } from "./components/Header";
 import { Navigation } from "./components/Navigation";
 
@@ -25,6 +25,7 @@ import { AddProductScreen } from "./screens/AddProductScreen";
 import { CartScreen } from "./screens/CartScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
 import { CommunityScreen } from "./screens/CommunityScreen";
+import { AuthScreen } from "./screens/AuthScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 
 type Currency = "USD" | "EUR";
@@ -98,6 +99,25 @@ export default function App() {
   const [isLoading, setIsLoading] =
     useState<boolean>(true);
 
+const [currentUser, setCurrentUser] =
+  useState<Awaited<ReturnType<typeof getCurrentUser>>>(null);
+
+useEffect(() => {
+  const loadCurrentUser = async () => {
+    try {
+      const user = await getCurrentUser();
+      setCurrentUser(user);
+    } catch (error) {
+      console.error("Error obteniendo usuario actual:", error);
+    }
+  };
+
+  loadCurrentUser();
+}, []);
+const handleAuthSuccess = async () => {
+  const user = await getCurrentUser();
+  setCurrentUser(user);
+};
   // --------------------------------------------------
   // REFS PARA EVITAR RESPUESTAS ANTIGUAS
   // --------------------------------------------------
@@ -772,9 +792,21 @@ export default function App() {
 
               {currentScreen ===
                 "comunidad" && (
-                <CommunityScreen />
+                <CommunityScreen
+  isAuthenticated={!!currentUser}
+  onRequireAuth={() => setCurrentScreen("auth")}
+/>
               )}
+{/* AUTENTICACIÓN */}
 
+{currentScreen === "auth" && (
+  <AuthScreen
+    onLoginSuccess={async () => {
+      await handleAuthSuccess();
+      setCurrentScreen("comunidad");
+    }}
+  />
+)}
               {/* PERFIL */}
 
               {currentScreen ===

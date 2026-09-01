@@ -93,7 +93,15 @@ function getGroupKey(group: CommunityPriceGroup, index: number): string {
   return `${group.product}-${index}`;
 }
 
-export const CommunityScreen: React.FC = () => {
+interface CommunityScreenProps {
+  isAuthenticated: boolean;
+  onRequireAuth: () => void;
+}
+
+export const CommunityScreen: React.FC<CommunityScreenProps> = ({
+  isAuthenticated,
+  onRequireAuth,
+}) => {
   const [groups, setGroups] = useState<CommunityPriceGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -280,7 +288,14 @@ export const CommunityScreen: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => setShowShareModal(true)}
+          onClick={() => {
+  if (!isAuthenticated) {
+    onRequireAuth();
+    return;
+  }
+
+  setShowShareModal(true);
+}}
           id="btn-compartir-precio"
           className="px-5 py-3 bg-[#2E7D32] hover:bg-emerald-800 text-white font-bold text-sm rounded-2xl shadow-md shadow-emerald-900/10 flex items-center justify-center gap-2 shrink-0 transition-all hover:scale-[1.02]"
         >
@@ -477,7 +492,14 @@ export const CommunityScreen: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setShowShareModal(true)}
+            onClick={() => {
+  if (!isAuthenticated) {
+    onRequireAuth();
+    return;
+  }
+
+  setShowShareModal(true);
+}}
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#2E7D32] hover:bg-emerald-800 text-white text-xs font-bold rounded-xl"
           >
             <Share2 className="w-4 h-4" />

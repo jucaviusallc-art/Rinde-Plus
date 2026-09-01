@@ -5,6 +5,7 @@ export type ScreenName =
   | "carrito"
   | "historial"
   | "comunidad"
+  | "auth"
   | "perfil";
 
 export type RateType = "bcv" | "custom";
