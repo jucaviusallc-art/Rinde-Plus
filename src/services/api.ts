@@ -1,3 +1,5 @@
+import { supabase } from "./supabase";
+
 import {
   Budget,
   CartSummary,
@@ -156,6 +158,22 @@ function normalizeDolarApiRate(
     );
   }
 
+  /*
+   * DolarApi devuelve:
+   *
+   * {
+   *   fuente,
+   *   nombre,
+   *   moneda,
+   *   compra,
+   *   venta,
+   *   promedio,
+   *   fechaActualizacion
+   * }
+   *
+   * Para Rinde+ utilizamos "promedio".
+   */
+
   const rate = Number(data.promedio);
 
   if (
@@ -171,6 +189,12 @@ function normalizeDolarApiRate(
     currency === "USD"
       ? "USD"
       : "EUR";
+
+  /*
+   * Validación adicional:
+   * evita aceptar accidentalmente una
+   * respuesta de otra moneda.
+   */
 
   if (
     data.moneda &&
@@ -273,9 +297,9 @@ export const apiService = {
       return {
         monto_bs: 0,
         tipo_tasa: "bcv",
-        tasa_custom: 798.33,
+        tasa_custom: 742.23,
         spent_bs: 0,
-        active_rate: 798.33,
+        active_rate: 742.23,
         remaining_bs: 0,
         budget_usd: 0,
         spent_usd: 0,
@@ -315,7 +339,7 @@ export const apiService = {
 
     const data = await res.json();
 
-    return data.budget;
+    return data;
   },
 
   // --------------------------------------------------
@@ -325,6 +349,23 @@ export const apiService = {
   async getExchangeRate(
     currency: Currency = "USD"
   ): Promise<ExchangeRateInfo> {
+
+    /*
+     * IMPORTANTE:
+     *
+     * La tasa oficial se obtiene directamente
+     * desde DolarApi.
+     *
+     * USD:
+     * https://ve.dolarapi.com/v1/dolares/oficial
+     *
+     * EUR:
+     * https://ve.dolarapi.com/v1/euros/oficial
+     *
+     * De esta manera NO utilizamos la tasa USD
+     * para calcular artificialmente la tasa EUR.
+     */
+
     try {
       const rate =
         await fetchDolarApiRate(
@@ -339,12 +380,22 @@ export const apiService = {
       return rate;
 
     } catch (e) {
+
       console.warn(
         `Error consultando DolarApi para ${currency}:`,
         e
       );
 
+      /*
+       * Como respaldo, intentamos consultar
+       * nuestro backend.
+       *
+       * Esto solamente se utiliza si DolarApi
+       * no está disponible.
+       */
+
       try {
+
         const url =
           `${API_BASE}/exchange-rate-public` +
           `?currency=${currency}`;
@@ -398,16 +449,24 @@ export const apiService = {
         };
 
       } catch (backendError) {
+
         console.warn(
           `Backend fallback también falló para ${currency}:`,
           backendError
         );
 
+        /*
+         * Último respaldo.
+         *
+         * Estos valores NO se utilizan mientras
+         * DolarApi esté funcionando.
+         */
+
         return {
           rate:
             currency === "EUR"
               ? 916.00
-              : 798.33,
+              : 784.66,
 
           date:
             new Date()
@@ -426,10 +485,21 @@ export const apiService = {
   // --------------------------------------------------
 
   async refreshExchangeRate(): Promise<ExchangeRateInfo> {
+
+    /*
+     * La actualización se realiza directamente
+     * desde DolarApi para evitar depender de una
+     * posible lógica incorrecta del servidor.
+     *
+     * Se consulta USD por defecto, que mantiene
+     * compatibilidad con el método existente.
+     */
+
     try {
       return await fetchDolarApiRate("USD");
 
     } catch (e) {
+
       console.warn(
         "DolarApi refresh failed, using backend:",
         e
@@ -474,6 +544,7 @@ export const apiService = {
       return await res.json();
 
     } catch (e) {
+
       console.warn(
         "API fallback for cart:",
         e
@@ -484,7 +555,7 @@ export const apiService = {
         total_items: 0,
         total_usd: 0,
         total_bs: 0,
-        active_rate: 798.33,
+        active_rate: 742.23,
         remaining_bs: 0,
       };
     }
@@ -521,10 +592,27 @@ export const apiService = {
 
         body: JSON.stringify({
           name,
+
+          /*
+           * Se conserva el nombre del campo
+           * utilizado actualmente por el backend.
+           */
           price_usd: price,
+
           quantity,
+
+          /*
+           * La moneda original del producto
+           * se envía explícitamente.
+           */
           currency,
-          rate_used: finalRate, // Envía la tasa real activa
+
+          /*
+           * Se envía la tasa correspondiente a la
+           * moneda seleccionada para evitar que EUR
+           * utilice accidentalmente la tasa USD.
+           */
+          rate_used: finalRate,
         }),
       }
     );
@@ -605,6 +693,7 @@ export const apiService = {
     );
 
     if (!res.ok) {
+
       const err =
         await res
           .json()
@@ -628,6 +717,7 @@ export const apiService = {
   > {
 
     try {
+
       const res = await fetch(
         `${API_BASE}/history`,
         {
@@ -644,6 +734,7 @@ export const apiService = {
       return await res.json();
 
     } catch (e) {
+
       console.warn(
         "API fallback for history:",
         e
@@ -652,7 +743,37 @@ export const apiService = {
       return [];
     }
   },
+  async deleteHistoryItem(id: number): Promise<void> {
+    const res = await fetch(
+      `${API_BASE}/history/${id}`,
+      {
+        method: "DELETE",
+        headers: getUserHeaders(),
+      }
+    );
 
+    if (!res.ok) {
+      throw new Error(
+        "Error al eliminar el registro del historial"
+      );
+    }
+  },
+
+  async clearHistory(): Promise<void> {
+    const res = await fetch(
+      `${API_BASE}/history`,
+      {
+        method: "DELETE",
+        headers: getUserHeaders(),
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error(
+        "Error al vaciar el historial"
+      );
+    }
+  },
   // --------------------------------------------------
   // PRECIOS DE LA COMUNIDAD
   // --------------------------------------------------
@@ -662,6 +783,7 @@ export const apiService = {
   ): Promise<CommunityPrice[]> {
 
     try {
+
       const query =
         buildCommunityQuery(filters);
 
@@ -681,6 +803,7 @@ export const apiService = {
       return await res.json();
 
     } catch (e) {
+
       console.warn(
         "API fallback for community prices:",
         e
@@ -699,6 +822,7 @@ export const apiService = {
   ): Promise<CommunityPriceGroup[]> {
 
     try {
+
       const query =
         buildCommunityQuery(filters);
 
@@ -727,6 +851,7 @@ export const apiService = {
       return data as CommunityPriceGroup[];
 
     } catch (e) {
+
       console.warn(
         "API fallback for grouped community prices:",
         e
@@ -749,11 +874,21 @@ export const apiService = {
     user_name?: string;
   }): Promise<void> {
 
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const headers = getUserHeaders(true);
+
+    if (session?.access_token) {
+      headers.Authorization = `Bearer ${session.access_token}`;
+    }
+
     const res = await fetch(
       `${API_BASE}/community-prices`,
       {
         method: "POST",
-        headers: getUserHeaders(true),
+        headers,
 
         body: JSON.stringify(
           payload
@@ -762,6 +897,7 @@ export const apiService = {
     );
 
     if (!res.ok) {
+
       const errorData =
         await res
           .json()

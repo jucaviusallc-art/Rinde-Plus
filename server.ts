@@ -243,6 +243,7 @@ app.post(
           monto_bs = EXCLUDED.monto_bs,
           tipo_tasa = EXCLUDED.tipo_tasa,
           tasa_custom = EXCLUDED.tasa_custom,
+          spent_bs = 0,
           updated_at = NOW()
         RETURNING *
         `,
@@ -1070,22 +1071,72 @@ app.delete(
   ],
   async (req, res) => {
     try {
+      const authHeader = req.headers.authorization;
+
+      if (!authHeader?.startsWith("Bearer ")) {
+        return res.status(401).json({
+          error: "Debes iniciar sesión para eliminar precios.",
+        });
+      }
+
+      const token = authHeader.slice(7);
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser(token);
+
+      if (authError || !user) {
+        return res.status(401).json({
+          error: "Sesión no válida.",
+        });
+      }
+
       const id = Number(req.params.id);
 
-      const result = await pool.query(
+      if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({
+          error: "Identificador no válido.",
+        });
+      }
+
+      const existing = await pool.query(
         `
-        DELETE FROM community_prices
+        SELECT id, auth_user_id, user_email
+        FROM community_prices
         WHERE id = $1
-        RETURNING id
+        LIMIT 1
         `,
         [id]
       );
 
-      if (result.rows.length === 0) {
+      if (existing.rows.length === 0) {
         return res.status(404).json({
           error: "Precio no encontrado",
         });
       }
+
+      const record = existing.rows[0];
+      const isOwner =
+        record.auth_user_id &&
+        String(record.auth_user_id) === String(user.id);
+
+      const isAdmin =
+        String(user.email || "").toLowerCase() ===
+        "jucaviusallc@gmail.com";
+
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({
+          error: "No tienes permiso para eliminar este precio.",
+        });
+      }
+
+      await pool.query(
+        `
+        DELETE FROM community_prices
+        WHERE id = $1
+        `,
+        [id]
+      );
 
       return res.json({ success: true });
     } catch (err) {
