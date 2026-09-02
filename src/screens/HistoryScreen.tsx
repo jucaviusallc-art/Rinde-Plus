@@ -149,7 +149,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
   };
 
   const handleDeleteOne = async (id: number, e: React.MouseEvent) => {
-    e.stopPropagation(); // Evita que se expanda/colapse la tarjeta al hacer clic en borrar
+    e.stopPropagation();
     if (!window.confirm("¿Estás seguro de que deseas eliminar este registro del historial?")) {
       return;
     }
@@ -179,7 +179,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
     <div className="max-w-4xl mx-auto space-y-6 py-2">
       {/* ============================================================
           ENCABEZADO
-         ============================================================ */}
+          ============================================================ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
@@ -208,7 +208,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
 
       {/* ============================================================
           SIN HISTORIAL
-         ============================================================ */}
+          ============================================================ */}
       {history.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-10 text-center space-y-3">
           <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-full flex items-center justify-center mx-auto">
@@ -270,17 +270,56 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
             const hasUSD = usdRate > 0;
             const hasEUR = eurRate > 0;
 
-            const totalBs = toNumber(record.total_bs);
-            const totalCurrency = toNumber(record.total_usd);
+            // ========================================================
+            // CÁLCULO SEGURO Y DINÁMICO DE TOTALES CON RESPALDO
+            // ========================================================
+            const computedTotals = items.reduce(
+              (acc, item) => {
+                const rate = getItemRate(item, record);
+                const priceCurrency = toNumber(item.price_usd);
+                const storedPriceBs = toNumber(item.price_bs);
+                const priceBs =
+                  storedPriceBs > 0
+                    ? storedPriceBs
+                    : priceCurrency > 0 && rate > 0
+                      ? priceCurrency * rate
+                      : 0;
+
+                const quantity = Math.max(1, toNumber(item.quantity, 1));
+                const storedSubtotalBs = toNumber(item.subtotal_bs);
+                const subtotalBs =
+                  storedSubtotalBs > 0
+                    ? storedSubtotalBs
+                    : priceBs * quantity;
+
+                const subtotalCurrency =
+                  toNumber(item.subtotal_usd) > 0
+                    ? toNumber(item.subtotal_usd)
+                    : priceCurrency * quantity;
+
+                return {
+                  bs: acc.bs + subtotalBs,
+                  currency: acc.currency + subtotalCurrency,
+                };
+              },
+              { bs: 0, currency: 0 }
+            );
+
+            const storedTotalBs = toNumber(record.total_bs);
+            const totalBs = storedTotalBs > 0 ? storedTotalBs : computedTotals.bs;
+
+            const storedTotalCurrency = toNumber(record.total_usd);
+            const totalCurrency =
+              storedTotalCurrency > 0 ? storedTotalCurrency : computedTotals.currency;
 
             return (
               <div
                 key={record.id}
                 className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl overflow-hidden shadow-xs transition-all"
               >
-                {/* ==================================================
+                {/* =================================================*
                     HEADER DEL REGISTRO
-                   ================================================== */}
+                   ================================================= */}
 
                 <div
                   onClick={() => toggleExpand(record.id)}
@@ -353,9 +392,9 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                   </div>
                 </div>
 
-                {/* ==================================================
+                {/* =================================================*
                     DETALLES
-                   ================================================== */}
+                   ================================================= */}
 
                 {isExpanded && (
                   <div className="p-5 bg-slate-50/70 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800/80 space-y-4">
@@ -389,10 +428,27 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                           const currency = normalizeCurrency(item.currency);
                           const symbol = currencySymbol(currency);
                           const rate = getItemRate(item, record);
+
                           const priceCurrency = toNumber(item.price_usd);
-                          const priceBs = toNumber(item.price_bs);
-                          const subtotalBs = toNumber(item.subtotal_bs);
-                          const subtotalCurrency = toNumber(item.subtotal_usd);
+                          const storedPriceBs = toNumber(item.price_bs);
+                          const priceBs =
+                            storedPriceBs > 0
+                              ? storedPriceBs
+                              : priceCurrency > 0 && rate > 0
+                                ? priceCurrency * rate
+                                : 0;
+
+                          const quantity = Math.max(1, toNumber(item.quantity, 1));
+                          const storedSubtotalBs = toNumber(item.subtotal_bs);
+                          const subtotalBs =
+                            storedSubtotalBs > 0
+                              ? storedSubtotalBs
+                              : priceBs * quantity;
+
+                          const subtotalCurrency =
+                            toNumber(item.subtotal_usd) > 0
+                              ? toNumber(item.subtotal_usd)
+                              : priceCurrency * quantity;
 
                           return (
                             <div
@@ -404,7 +460,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                                   {item.name}
                                 </span>
                                 <span className="text-xs text-slate-500 dark:text-slate-400 block">
-                                  {item.quantity} ud × {symbol}
+                                  {quantity} ud × {symbol}
                                   {formatCurrency(priceCurrency)} {currency}
                                 </span>
                                 <span className="text-xs text-slate-500 dark:text-slate-400 block mt-0.5">
