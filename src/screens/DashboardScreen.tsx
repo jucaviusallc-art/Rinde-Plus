@@ -38,18 +38,18 @@ export const DashboardScreen: React.FC<
   onNavigate,
 }) => {
   // --------------------------------------------------
-  // DATOS PRINCIPALES
+  // DATOS PRINCIPALES (Corregido: spent_bs + carrito activo)
   // --------------------------------------------------
 
   const montoBs = Number(
     budget?.monto_bs || 0
   );
 
-  const spentBs = Number(
-    budget?.spent_bs ??
-      cartSummary?.total_bs ??
-      0
-  );
+  const historicalSpentBs = Number(budget?.spent_bs || 0);
+  const cartSpentBs = Number(cartSummary?.total_bs || 0);
+
+  // Gasto total actual = Gastado en historial + Lo que está en el carrito
+  const spentBs = historicalSpentBs + cartSpentBs;
 
   const remainingBs = Math.max(
     0,
@@ -211,7 +211,7 @@ export const DashboardScreen: React.FC<
               "EUR"
                 ? "EUR"
                 : budget?.tipo_tasa ===
-                  "custom"
+                    "custom"
                 ? "CUSTOM"
                 : "BCV"}
 
@@ -225,7 +225,7 @@ export const DashboardScreen: React.FC<
 
 
       {/* ==================================================
-          DISPONIBLE (Ajuste milimétrico)
+          DISPONIBLE
           ================================================== */}
 
       <div className="bg-linear-to-br from-emerald-500 to-emerald-700 text-white rounded-xl px-4 py-2.5 shadow-sm relative overflow-hidden">
@@ -260,7 +260,7 @@ export const DashboardScreen: React.FC<
 
 
       {/* ==================================================
-          GASTADO (Ajuste milimétrico)
+          GASTADO
           ================================================== */}
 
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 shadow-xs">
@@ -293,7 +293,7 @@ export const DashboardScreen: React.FC<
 
 
       {/* ==================================================
-          PRESUPUESTO INICIAL (Ajuste milimétrico)
+          PRESUPUESTO INICIAL
           ================================================== */}
 
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 shadow-xs">
@@ -592,3 +592,5 @@ export const DashboardScreen: React.FC<
     </div>
   );
 };
+
+export default DashboardScreen;
