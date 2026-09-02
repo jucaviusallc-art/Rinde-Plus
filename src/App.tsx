@@ -372,13 +372,15 @@ const handleAuthSuccess = async () => {
       name: string,
       price: number,
       quantity: number,
-      currency: Currency
+      currency: Currency,
+      rate_used: number
     ) => {
       await apiService.addToCart(
         name,
         price,
         quantity,
-        currency
+        currency,
+        rate_used
       );
 
       await refreshAppData(

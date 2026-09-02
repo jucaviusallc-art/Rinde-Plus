@@ -18,7 +18,8 @@ interface AddProductScreenProps {
     name: string,
     price: number,
     quantity: number,
-    currency: Currency
+    currency: Currency,
+    rate_used: number
   ) => Promise<void>;
 
   onNavigate: (screen: ScreenName) => void;
@@ -235,7 +236,8 @@ export const AddProductScreen: React.FC<
         name,
         parsedPrice,
         quantity,
-        monedaSeleccionada
+        monedaSeleccionada,
+        activeRate
       );
 
       // Limpiar formulario
