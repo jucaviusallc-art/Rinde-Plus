@@ -1,8 +1,20 @@
 import express from "express";
 import cors from "cors";
+import path from "path";
+import fs from "fs";
 import pkg from "pg";
+import { createClient } from "@supabase/supabase-js";
 
 const { Pool } = pkg;
+
+// Priorizar SUPABASE_URL limpia y mantener respaldo para VITE_SUPABASE_URL
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const supabase = createClient(
+  supabaseUrl || "",
+  supabaseServiceKey || ""
+);
 
 // ==========================================================
 // CONEXIÓN A SUPABASE / POSTGRESQL
@@ -27,17 +39,17 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 // ==========================================================
-// USUARIO
+// USUARIO (Estricto: Sin default_user para evitar pérdida de datos)
 // ==========================================================
 
-function getUserId(req: express.Request): string {
+function getUserId(req: express.Request): string | null {
   const userId = req.headers["x-user-id"];
 
   if (typeof userId === "string" && userId.trim()) {
     return userId.trim();
   }
 
-  return "default_user";
+  return null;
 }
 
 // ==========================================================
@@ -50,12 +62,6 @@ function roundMoney(value: number): number {
 
 // ==========================================================
 // TASAS DE CAMBIO
-// ==========================================================
-//
-// Estas tasas son solamente un respaldo en memoria.
-// La aplicación actualmente obtiene las tasas principalmente
-// mediante DolarApi.
-//
 // ==========================================================
 
 let currentRates = {
@@ -70,10 +76,6 @@ let currentRates = {
     source: "Rinde+ - respaldo",
   },
 };
-
-// ----------------------------------------------------------
-// GET TASA
-// ----------------------------------------------------------
 
 app.get(
   [
@@ -101,21 +103,13 @@ app.get(
         source: rate.source,
       });
     } catch (err) {
-      console.error(
-        "Error al obtener tasa:",
-        err
-      );
-
+      console.error("Error al obtener tasa:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
     }
   }
 );
-
-// ----------------------------------------------------------
-// POST ACTUALIZAR TASA
-// ----------------------------------------------------------
 
 app.post(
   [
@@ -133,9 +127,7 @@ app.post(
       ) {
         currentRates.USD = {
           rate: Number(bcv),
-          date: new Date()
-            .toISOString()
-            .split("T")[0],
+          date: new Date().toISOString().split("T")[0],
           source: "Backend Rinde+",
         };
       }
@@ -147,9 +139,7 @@ app.post(
       ) {
         currentRates.EUR = {
           rate: Number(eur),
-          date: new Date()
-            .toISOString()
-            .split("T")[0],
+          date: new Date().toISOString().split("T")[0],
           source: "Backend Rinde+",
         };
       }
@@ -159,11 +149,7 @@ app.post(
         rates: currentRates,
       });
     } catch (err) {
-      console.error(
-        "Error al actualizar tasas:",
-        err
-      );
-
+      console.error("Error al actualizar tasas:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
@@ -175,10 +161,6 @@ app.post(
 // PRESUPUESTO
 // ==========================================================
 
-// ----------------------------------------------------------
-// OBTENER PRESUPUESTO
-// ----------------------------------------------------------
-
 app.get(
   [
     "/api/budget",
@@ -187,6 +169,9 @@ app.get(
   async (req, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "No autorizado: Falta X-User-ID" });
+      }
 
       const result = await pool.query(
         `
@@ -209,21 +194,13 @@ app.get(
 
       return res.json(result.rows[0]);
     } catch (err) {
-      console.error(
-        "Error al obtener presupuesto:",
-        err
-      );
-
+      console.error("Error al obtener presupuesto:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
     }
   }
 );
-
-// ----------------------------------------------------------
-// GUARDAR PRESUPUESTO
-// ----------------------------------------------------------
 
 app.post(
   [
@@ -233,6 +210,9 @@ app.post(
   async (req, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "No autorizado: Falta X-User-ID" });
+      }
 
       const {
         monto_bs,
@@ -276,11 +256,7 @@ app.post(
 
       return res.json(result.rows[0]);
     } catch (err) {
-      console.error(
-        "Error al guardar presupuesto:",
-        err
-      );
-
+      console.error("Error al guardar presupuesto:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
@@ -292,10 +268,6 @@ app.post(
 // CARRITO
 // ==========================================================
 
-// ----------------------------------------------------------
-// OBTENER CARRITO
-// ----------------------------------------------------------
-
 app.get(
   [
     "/api/cart",
@@ -304,6 +276,9 @@ app.get(
   async (req, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "No autorizado: Falta X-User-ID" });
+      }
 
       const result = await pool.query(
         `
@@ -349,7 +324,6 @@ app.get(
           0
         );
 
-      // Obtener presupuesto
       const budgetResult =
         await pool.query(
           `
@@ -361,8 +335,7 @@ app.get(
           [userId]
         );
 
-      const budget =
-        budgetResult.rows[0];
+      const budget = budgetResult.rows[0];
 
       const remaining_bs = budget
         ? Number(budget.monto_bs || 0) -
@@ -379,25 +352,16 @@ app.get(
           items.length > 0
             ? Number(items[0].rate_used) || 1
             : 0,
-        remaining_bs:
-          roundMoney(remaining_bs),
+        remaining_bs: roundMoney(remaining_bs),
       });
     } catch (err) {
-      console.error(
-        "Error al obtener carrito:",
-        err
-      );
-
+      console.error("Error al obtener carrito:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
     }
   }
 );
-
-// ----------------------------------------------------------
-// AGREGAR PRODUCTO
-// ----------------------------------------------------------
 
 app.post(
   [
@@ -407,6 +371,9 @@ app.post(
   async (req, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "No autorizado: Falta X-User-ID" });
+      }
 
       const {
         name,
@@ -446,25 +413,15 @@ app.post(
         ]
       );
 
-      return res.json(
-        result.rows[0]
-      );
+      return res.json(result.rows[0]);
     } catch (err) {
-      console.error(
-        "Error al agregar producto:",
-        err
-      );
-
+      console.error("Error al agregar producto:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
     }
   }
 );
-
-// ----------------------------------------------------------
-// ACTUALIZAR CANTIDAD
-// ----------------------------------------------------------
 
 app.put(
   [
@@ -474,11 +431,12 @@ app.put(
   async (req, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "No autorizado: Falta X-User-ID" });
+      }
 
       const id = Number(req.params.id);
-
-      const quantity =
-        Number(req.body.quantity);
+      const quantity = Number(req.body.quantity);
 
       if (
         !Number.isFinite(id) ||
@@ -498,11 +456,7 @@ app.put(
           AND user_id = $3
         RETURNING *
         `,
-        [
-          quantity,
-          id,
-          userId,
-        ]
+        [quantity, id, userId]
       );
 
       if (result.rows.length === 0) {
@@ -511,25 +465,15 @@ app.put(
         });
       }
 
-      return res.json(
-        result.rows[0]
-      );
+      return res.json(result.rows[0]);
     } catch (err) {
-      console.error(
-        "Error al actualizar cantidad:",
-        err
-      );
-
+      console.error("Error al actualizar cantidad:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
     }
   }
 );
-
-// ----------------------------------------------------------
-// ELIMINAR PRODUCTO
-// ----------------------------------------------------------
 
 app.delete(
   [
@@ -539,6 +483,9 @@ app.delete(
   async (req, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "No autorizado: Falta X-User-ID" });
+      }
 
       const id = Number(req.params.id);
 
@@ -558,15 +505,9 @@ app.delete(
         });
       }
 
-      return res.json({
-        success: true,
-      });
+      return res.json({ success: true });
     } catch (err) {
-      console.error(
-        "Error al eliminar producto:",
-        err
-      );
-
+      console.error("Error al eliminar producto:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
@@ -577,14 +518,6 @@ app.delete(
 // ==========================================================
 // CHECKOUT
 // ==========================================================
-//
-// IMPORTANTE:
-// apiService.ts actual llama a checkout()
-// sin enviar record ni budget.
-//
-// Por eso el servidor construye el registro
-// usando carrito + presupuesto de PostgreSQL.
-// ==========================================================
 
 app.post(
   [
@@ -592,172 +525,124 @@ app.post(
     "/app-api/cart/checkout",
   ],
   async (req, res) => {
-    const client =
-      await pool.connect();
+    const client = await pool.connect();
 
     try {
       const userId = getUserId(req);
+      if (!userId) {
+        client.release();
+        return res.status(401).json({ error: "No autorizado: Falta X-User-ID" });
+      }
 
-      await client.query(
-        "BEGIN"
+      await client.query("BEGIN");
+
+      const cartResult = await client.query(
+        `
+        SELECT *
+        FROM cart_items
+        WHERE user_id = $1
+        ORDER BY id ASC
+        `,
+        [userId]
       );
 
-      // -----------------------------------------------
-      // 1. Obtener carrito
-      // -----------------------------------------------
-
-      const cartResult =
-        await client.query(
-          `
-          SELECT *
-          FROM cart_items
-          WHERE user_id = $1
-          ORDER BY id ASC
-          `,
-          [userId]
-        );
-
-      if (
-        cartResult.rows.length === 0
-      ) {
-        await client.query(
-          "ROLLBACK"
-        );
-
+      if (cartResult.rows.length === 0) {
+        await client.query("ROLLBACK");
         return res.status(400).json({
-          error:
-            "El carrito está vacío",
+          error: "El carrito está vacío",
         });
       }
 
-      const items =
-        cartResult.rows;
+      const items = cartResult.rows;
 
-      // -----------------------------------------------
-      // 2. Calcular totales
-      // -----------------------------------------------
+      const total_usd = items.reduce(
+        (sum, item) =>
+          sum +
+          Number(item.price_usd || 0) *
+            Number(item.quantity || 0),
+        0
+      );
 
-      const total_usd =
-        items.reduce(
-          (sum, item) =>
-            sum +
-            Number(item.price_usd || 0) *
-              Number(item.quantity || 0),
-          0
-        );
-
-      const total_bs =
-        items.reduce(
-          (sum, item) =>
-            sum +
-            Number(item.price_usd || 0) *
-              Number(item.quantity || 0) *
-              (Number(item.rate_used) || 1),
-          0
-        );
+      const total_bs = items.reduce(
+        (sum, item) =>
+          sum +
+          Number(item.price_usd || 0) *
+            Number(item.quantity || 0) *
+            (Number(item.rate_used) || 1),
+        0
+      );
 
       const rate_used =
         items.length > 0
           ? Number(items[0].rate_used) || 1
           : 1;
 
-      // -----------------------------------------------
-      // 3. Obtener presupuesto
-      // -----------------------------------------------
+      const budgetResult = await client.query(
+        `
+        SELECT *
+        FROM budgets
+        WHERE user_id = $1
+        LIMIT 1
+        `,
+        [userId]
+      );
 
-      const budgetResult =
-        await client.query(
-          `
-          SELECT *
-          FROM budgets
-          WHERE user_id = $1
-          LIMIT 1
-          `,
-          [userId]
-        );
+      const budget = budgetResult.rows[0];
 
-      const budget =
-        budgetResult.rows[0];
+      const budget_bs = budget
+        ? Number(budget.monto_bs || 0)
+        : 0;
 
-      const budget_bs =
-        budget
-          ? Number(budget.monto_bs || 0)
-          : 0;
+      const previousSpent = budget
+        ? Number(budget.spent_bs || 0)
+        : 0;
 
-      const previousSpent =
-        budget
-          ? Number(budget.spent_bs || 0)
-          : 0;
+      const newSpent = previousSpent + total_bs;
+      const remaining_bs = budget_bs - newSpent;
 
-      const newSpent =
-        previousSpent + total_bs;
+      const historyItems = items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        price_usd: Number(item.price_usd) || 0,
+        quantity: Number(item.quantity) || 1,
+        currency: item.currency || "USD",
+        rate_used: Number(item.rate_used) || 1,
+      }));
 
-      const remaining_bs =
-        budget_bs - newSpent;
-
-      // -----------------------------------------------
-      // 4. Preparar items para historial
-      // -----------------------------------------------
-
-      const historyItems =
-        items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          price_usd:
-            Number(item.price_usd) || 0,
-          quantity:
-            Number(item.quantity) || 1,
-          currency:
-            item.currency || "USD",
-          rate_used:
-            Number(item.rate_used) || 1,
-        }));
-
-      // -----------------------------------------------
-      // 5. Guardar historial
-      // -----------------------------------------------
-
-      const historyResult =
-        await client.query(
-          `
-          INSERT INTO shopping_history (
-            user_id,
-            date,
-            total_bs,
-            total_usd,
-            rate_used,
-            budget_bs,
-            remaining_bs,
-            items
-          )
-          VALUES (
-            $1,
-            NOW(),
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7
-          )
-          RETURNING *
-          `,
-          [
-            userId,
-            roundMoney(total_bs),
-            roundMoney(total_usd),
-            rate_used,
-            roundMoney(budget_bs),
-            roundMoney(remaining_bs),
-            JSON.stringify(
-              historyItems
-            ),
-          ]
-        );
-
-      // -----------------------------------------------
-      // 6. Actualizar presupuesto
-      // -----------------------------------------------
+      const historyResult = await client.query(
+        `
+        INSERT INTO shopping_history (
+          user_id,
+          date,
+          total_bs,
+          total_usd,
+          rate_used,
+          budget_bs,
+          remaining_bs,
+          items
+        )
+        VALUES (
+          $1,
+          NOW(),
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7
+        )
+        RETURNING *
+        `,
+        [
+          userId,
+          roundMoney(total_bs),
+          roundMoney(total_usd),
+          rate_used,
+          roundMoney(budget_bs),
+          roundMoney(remaining_bs),
+          JSON.stringify(historyItems),
+        ]
+      );
 
       if (budget) {
         await client.query(
@@ -767,16 +652,9 @@ app.post(
               updated_at = NOW()
           WHERE user_id = $2
           `,
-          [
-            roundMoney(newSpent),
-            userId,
-          ]
+          [roundMoney(newSpent), userId]
         );
       }
-
-      // -----------------------------------------------
-      // 7. Vaciar carrito
-      // -----------------------------------------------
 
       await client.query(
         `
@@ -786,28 +664,17 @@ app.post(
         [userId]
       );
 
-      await client.query(
-        "COMMIT"
-      );
+      await client.query("COMMIT");
 
       return res.json({
         success: true,
-        record:
-          historyResult.rows[0],
+        record: historyResult.rows[0],
       });
     } catch (err) {
-      await client.query(
-        "ROLLBACK"
-      );
-
-      console.error(
-        "Error en checkout:",
-        err
-      );
-
+      await client.query("ROLLBACK");
+      console.error("Error en checkout:", err);
       return res.status(500).json({
-        error:
-          "Error al procesar la compra",
+        error: "Error al procesar la compra",
       });
     } finally {
       client.release();
@@ -819,10 +686,6 @@ app.post(
 // HISTORIAL
 // ==========================================================
 
-// ----------------------------------------------------------
-// OBTENER HISTORIAL
-// ----------------------------------------------------------
-
 app.get(
   [
     "/api/history",
@@ -831,6 +694,9 @@ app.get(
   async (req, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "No autorizado: Falta X-User-ID" });
+      }
 
       const result = await pool.query(
         `
@@ -842,25 +708,15 @@ app.get(
         [userId]
       );
 
-      return res.json(
-        result.rows
-      );
+      return res.json(result.rows);
     } catch (err) {
-      console.error(
-        "Error al obtener historial:",
-        err
-      );
-
+      console.error("Error al obtener historial:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
     }
   }
 );
-
-// ----------------------------------------------------------
-// ELIMINAR REGISTRO
-// ----------------------------------------------------------
 
 app.delete(
   [
@@ -870,52 +726,37 @@ app.delete(
   async (req, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "No autorizado: Falta X-User-ID" });
+      }
 
-      const id =
-        Number(req.params.id);
+      const id = Number(req.params.id);
 
-      const result =
-        await pool.query(
-          `
-          DELETE FROM shopping_history
-          WHERE id = $1
-            AND user_id = $2
-          RETURNING id
-          `,
-          [
-            id,
-            userId,
-          ]
-        );
+      const result = await pool.query(
+        `
+        DELETE FROM shopping_history
+        WHERE id = $1
+          AND user_id = $2
+        RETURNING id
+        `,
+        [id, userId]
+      );
 
-      if (
-        result.rows.length === 0
-      ) {
+      if (result.rows.length === 0) {
         return res.status(404).json({
-          error:
-            "Compra no encontrada",
+          error: "Compra no encontrada",
         });
       }
 
-      return res.json({
-        success: true,
-      });
+      return res.json({ success: true });
     } catch (err) {
-      console.error(
-        "Error al eliminar historial:",
-        err
-      );
-
+      console.error("Error al eliminar historial:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
     }
   }
 );
-
-// ----------------------------------------------------------
-// VACIAR HISTORIAL
-// ----------------------------------------------------------
 
 app.delete(
   [
@@ -925,6 +766,9 @@ app.delete(
   async (req, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "No autorizado: Falta X-User-ID" });
+      }
 
       await pool.query(
         `
@@ -934,15 +778,9 @@ app.delete(
         [userId]
       );
 
-      return res.json({
-        success: true,
-      });
+      return res.json({ success: true });
     } catch (err) {
-      console.error(
-        "Error al vaciar historial:",
-        err
-      );
-
+      console.error("Error al vaciar historial:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
@@ -954,10 +792,6 @@ app.delete(
 // COMUNIDAD
 // ==========================================================
 
-// ----------------------------------------------------------
-// OBTENER PRECIOS
-// ----------------------------------------------------------
-
 app.get(
   [
     "/api/community-prices",
@@ -965,111 +799,49 @@ app.get(
   ],
   async (req, res) => {
     try {
-      const {
-        product,
-        city,
-        state,
-        sort,
-      } = req.query;
-
+      const { product, city, state, sort } = req.query;
       const values: any[] = [];
-
       const conditions: string[] = [];
 
-      if (
-        typeof product === "string" &&
-        product.trim()
-      ) {
-        values.push(
-          `%${product.trim()}%`
-        );
-
-        conditions.push(
-          `LOWER(product) LIKE LOWER($${values.length})`
-        );
+      if (typeof product === "string" && product.trim()) {
+        values.push(`%${product.trim()}%`);
+        conditions.push(`LOWER(product) LIKE LOWER($${values.length})`);
       }
 
-      if (
-        typeof city === "string" &&
-        city.trim()
-      ) {
-        values.push(
-          `%${city.trim()}%`
-        );
-
-        conditions.push(
-          `LOWER(city) LIKE LOWER($${values.length})`
-        );
+      if (typeof city === "string" && city.trim()) {
+        values.push(`%${city.trim()}%`);
+        conditions.push(`LOWER(city) LIKE LOWER($${values.length})`);
       }
 
-      if (
-        typeof state === "string" &&
-        state.trim()
-      ) {
-        values.push(
-          `%${state.trim()}%`
-        );
-
-        conditions.push(
-          `LOWER(state) LIKE LOWER($${values.length})`
-        );
+      if (typeof state === "string" && state.trim()) {
+        values.push(`%${state.trim()}%`);
+        conditions.push(`LOWER(state) LIKE LOWER($${values.length})`);
       }
 
-      let query = `
-        SELECT *
-        FROM community_prices
-      `;
+      let query = `SELECT * FROM community_prices`;
 
-      if (
-        conditions.length > 0
-      ) {
-        query +=
-          " WHERE " +
-          conditions.join(
-            " AND "
-          );
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
       }
 
-      if (
-        sort === "price_asc"
-      ) {
-        query +=
-          " ORDER BY price_usd ASC";
-      } else if (
-        sort === "price_desc"
-      ) {
-        query +=
-          " ORDER BY price_usd DESC";
+      if (sort === "price_asc") {
+        query += " ORDER BY price_usd ASC";
+      } else if (sort === "price_desc") {
+        query += " ORDER BY price_usd DESC";
       } else {
-        query +=
-          " ORDER BY created_at DESC";
+        query += " ORDER BY created_at DESC";
       }
 
-      const result =
-        await pool.query(
-          query,
-          values
-        );
-
-      return res.json(
-        result.rows
-      );
+      const result = await pool.query(query, values);
+      return res.json(result.rows);
     } catch (err) {
-      console.error(
-        "Error al obtener precios comunitarios:",
-        err
-      );
-
+      console.error("Error al obtener precios comunitarios:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
     }
   }
 );
-
-// ----------------------------------------------------------
-// PRECIOS AGRUPADOS
-// ----------------------------------------------------------
 
 app.get(
   [
@@ -1078,341 +850,126 @@ app.get(
   ],
   async (req, res) => {
     try {
-      const {
-        product,
-        city,
-        state,
-        sort,
-      } = req.query;
-
+      const { product, city, state, sort } = req.query;
       const values: any[] = [];
-
       const conditions: string[] = [];
 
-      if (
-        typeof product === "string" &&
-        product.trim()
-      ) {
-        values.push(
-          `%${product.trim()}%`
-        );
-
-        conditions.push(
-          `LOWER(product) LIKE LOWER($${values.length})`
-        );
+      if (typeof product === "string" && product.trim()) {
+        values.push(`%${product.trim()}%`);
+        conditions.push(`LOWER(product) LIKE LOWER($${values.length})`);
       }
 
-      if (
-        typeof city === "string" &&
-        city.trim()
-      ) {
-        values.push(
-          `%${city.trim()}%`
-        );
-
-        conditions.push(
-          `LOWER(city) LIKE LOWER($${values.length})`
-        );
+      if (typeof city === "string" && city.trim()) {
+        values.push(`%${city.trim()}%`);
+        conditions.push(`LOWER(city) LIKE LOWER($${values.length})`);
       }
 
-      if (
-        typeof state === "string" &&
-        state.trim()
-      ) {
-        values.push(
-          `%${state.trim()}%`
-        );
-
-        conditions.push(
-          `LOWER(state) LIKE LOWER($${values.length})`
-        );
+      if (typeof state === "string" && state.trim()) {
+        values.push(`%${state.trim()}%`);
+        conditions.push(`LOWER(state) LIKE LOWER($${values.length})`);
       }
 
-      let query = `
-        SELECT *
-        FROM community_prices
-      `;
+      let query = `SELECT * FROM community_prices`;
 
-      if (
-        conditions.length > 0
-      ) {
-        query +=
-          " WHERE " +
-          conditions.join(
-            " AND "
-          );
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
       }
 
-      query +=
-        " ORDER BY created_at DESC";
+      query += " ORDER BY created_at DESC";
 
-      const result =
-        await pool.query(
-          query,
-          values
-        );
+      const result = await pool.query(query, values);
 
-      // -----------------------------------------------
-      // Agrupar por producto
-      // -----------------------------------------------
+      const groups = new Map<string, any>();
 
-      const groups =
-        new Map<string, any>();
-
-      for (
-        const row of result.rows
-      ) {
-        const key =
-          String(row.product)
-            .trim()
-            .toLowerCase();
+      for (const row of result.rows) {
+        const key = String(row.product).trim().toLowerCase();
 
         if (!groups.has(key)) {
-          groups.set(
-            key,
-            {
-              product:
-                row.product,
-
-              lowest_price_usd:
-                Number(
-                  row.price_usd
-                ),
-
-              highest_price_usd:
-                Number(
-                  row.price_usd
-                ),
-
-              average_price_usd:
-                Number(
-                  row.price_usd
-                ),
-
-              lowest_price_bs:
-                Number(
-                  row.price_bs
-                ),
-
-              highest_price_bs:
-                Number(
-                  row.price_bs
-                ),
-
-              average_price_bs:
-                Number(
-                  row.price_bs
-                ),
-
-              reports: 1,
-
-              supermarkets: 1,
-
-              latest_report_at:
-                row.created_at,
-
-              offers: [
-                {
-                  ...row,
-                  is_lowest: true,
-                },
-              ],
-            }
-          );
-
+          groups.set(key, {
+            product: row.product,
+            lowest_price_usd: Number(row.price_usd),
+            highest_price_usd: Number(row.price_usd),
+            average_price_usd: Number(row.price_usd),
+            lowest_price_bs: Number(row.price_bs),
+            highest_price_bs: Number(row.price_bs),
+            average_price_bs: Number(row.price_bs),
+            reports: 1,
+            supermarkets: 1,
+            latest_report_at: row.created_at,
+            offers: [{ ...row, is_lowest: true }],
+          });
           continue;
         }
 
-        const group =
-          groups.get(key);
+        const group = groups.get(key);
+        const priceUsd = Number(row.price_usd);
+        const priceBs = Number(row.price_bs);
 
-        const priceUsd =
-          Number(row.price_usd);
-
-        const priceBs =
-          Number(row.price_bs);
-
-        group.lowest_price_usd =
-          Math.min(
-            group.lowest_price_usd,
-            priceUsd
-          );
-
-        group.highest_price_usd =
-          Math.max(
-            group.highest_price_usd,
-            priceUsd
-          );
-
-        group.lowest_price_bs =
-          Math.min(
-            group.lowest_price_bs,
-            priceBs
-          );
-
-        group.highest_price_bs =
-          Math.max(
-            group.highest_price_bs,
-            priceBs
-          );
-
+        group.lowest_price_usd = Math.min(group.lowest_price_usd, priceUsd);
+        group.highest_price_usd = Math.max(group.highest_price_usd, priceUsd);
+        group.lowest_price_bs = Math.min(group.lowest_price_bs, priceBs);
+        group.highest_price_bs = Math.max(group.highest_price_bs, priceBs);
         group.reports += 1;
 
-        if (
-          !group.supermarketNames
-        ) {
-          group.supermarketNames =
-            new Set<string>();
+        if (!group.supermarketNames) {
+          group.supermarketNames = new Set<string>();
         }
-
-        group.supermarketNames.add(
-          String(row.supermarket)
-        );
-
-        group.supermarkets =
-          group.supermarketNames.size;
+        group.supermarketNames.add(String(row.supermarket));
+        group.supermarkets = group.supermarketNames.size;
 
         group.offers.push({
           ...row,
-          is_lowest:
-            priceUsd ===
-            group.lowest_price_usd,
+          is_lowest: priceUsd === group.lowest_price_usd,
         });
 
-        const latest =
-          new Date(
-            group.latest_report_at
-          ).getTime();
-
-        const current =
-          new Date(
-            row.created_at
-          ).getTime();
-
-        if (
-          current > latest
-        ) {
-          group.latest_report_at =
-            row.created_at;
+        const latest = new Date(group.latest_report_at).getTime();
+        const current = new Date(row.created_at).getTime();
+        if (current > latest) {
+          group.latest_report_at = row.created_at;
         }
       }
 
-      const finalGroups =
-        Array.from(
-          groups.values()
-        ).map((group) => {
-          const prices =
-            group.offers.map(
-              (offer: any) =>
-                Number(
-                  offer.price_usd
-                )
-            );
+      const finalGroups = Array.from(groups.values()).map((group) => {
+        const prices = group.offers.map((offer: any) => Number(offer.price_usd));
+        const pricesBs = group.offers.map((offer: any) => Number(offer.price_bs));
 
-          const pricesBs =
-            group.offers.map(
-              (offer: any) =>
-                Number(
-                  offer.price_bs
-                )
-            );
+        group.average_price_usd =
+          prices.reduce((a: number, b: number) => a + b, 0) / prices.length;
+        group.average_price_bs =
+          pricesBs.reduce((a: number, b: number) => a + b, 0) / pricesBs.length;
 
-          group.average_price_usd =
-            prices.reduce(
-              (a: number, b: number) =>
-                a + b,
-              0
-            ) / prices.length;
+        group.lowest_price_usd = roundMoney(group.lowest_price_usd);
+        group.highest_price_usd = roundMoney(group.highest_price_usd);
+        group.average_price_usd = roundMoney(group.average_price_usd);
+        group.lowest_price_bs = roundMoney(group.lowest_price_bs);
+        group.highest_price_bs = roundMoney(group.highest_price_bs);
+        group.average_price_bs = roundMoney(group.average_price_bs);
 
-          group.average_price_bs =
-            pricesBs.reduce(
-              (a: number, b: number) =>
-                a + b,
-              0
-            ) / pricesBs.length;
+        delete group.supermarketNames;
+        return group;
+      });
 
-          group.lowest_price_usd =
-            roundMoney(
-              group.lowest_price_usd
-            );
-
-          group.highest_price_usd =
-            roundMoney(
-              group.highest_price_usd
-            );
-
-          group.average_price_usd =
-            roundMoney(
-              group.average_price_usd
-            );
-
-          group.lowest_price_bs =
-            roundMoney(
-              group.lowest_price_bs
-            );
-
-          group.highest_price_bs =
-            roundMoney(
-              group.highest_price_bs
-            );
-
-          group.average_price_bs =
-            roundMoney(
-              group.average_price_bs
-            );
-
-          delete group.supermarketNames;
-
-          return group;
-        });
-
-      if (
-        sort === "price_asc"
-      ) {
-        finalGroups.sort(
-          (a, b) =>
-            a.lowest_price_usd -
-            b.lowest_price_usd
-        );
-      } else if (
-        sort === "price_desc"
-      ) {
-        finalGroups.sort(
-          (a, b) =>
-            b.lowest_price_usd -
-            a.lowest_price_usd
-        );
+      if (sort === "price_asc") {
+        finalGroups.sort((a, b) => a.lowest_price_usd - b.lowest_price_usd);
+      } else if (sort === "price_desc") {
+        finalGroups.sort((a, b) => b.lowest_price_usd - a.lowest_price_usd);
       } else {
         finalGroups.sort(
           (a, b) =>
-            new Date(
-              b.latest_report_at
-            ).getTime() -
-            new Date(
-              a.latest_report_at
-            ).getTime()
+            new Date(b.latest_report_at).getTime() -
+            new Date(a.latest_report_at).getTime()
         );
       }
 
-      return res.json(
-        finalGroups
-      );
+      return res.json(finalGroups);
     } catch (err) {
-      console.error(
-        "Error al obtener precios agrupados:",
-        err
-      );
-
+      console.error("Error al obtener precios agrupados:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
     }
   }
 );
-
-// ----------------------------------------------------------
-// PUBLICAR PRECIO EN COMUNIDAD
-// ----------------------------------------------------------
 
 app.post(
   [
@@ -1421,96 +978,90 @@ app.post(
   ],
   async (req, res) => {
     try {
-      const {
-        product,
-        price_usd,
-        price_bs,
-        supermarket,
-        city,
-        state,
-        user_name,
-        user_email,
-      } = req.body;
+      const authHeader = req.headers.authorization;
 
-      const priceUsd =
-        Number(price_usd) || 0;
-
-      const priceBs =
-        Number(price_bs) || 0;
-
-      if (
-        !product ||
-        priceUsd <= 0
-      ) {
-        return res.status(400).json({
-          error:
-            "Producto y precio son obligatorios",
+      if (!authHeader?.startsWith("Bearer ")) {
+        return res.status(401).json({
+          error: "Debes iniciar sesión para compartir precios.",
         });
       }
 
-      const result =
-        await pool.query(
-          `
-          INSERT INTO community_prices (
-            product,
-            price_usd,
-            price_bs,
-            supermarket,
-            city,
-            state,
-            user_name,
-            user_email,
-            created_at
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7,
-            $8,
-            NOW()
-          )
-          RETURNING *
-          `,
-          [
-            product.trim(),
-            priceUsd,
-            priceBs,
-            supermarket?.trim() ||
-              "No especificado",
-            city?.trim() ||
-              "No especificada",
-            state?.trim() ||
-              "No especificado",
-            user_name?.trim() ||
-              "Anónimo",
-            user_email?.trim() ||
-              null,
-          ]
-        );
+      const token = authHeader.slice(7);
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser(token);
 
-      return res.json(
-        result.rows[0]
+      if (authError || !user) {
+        return res.status(401).json({
+          error: "Sesión no válida. Debes iniciar sesión.",
+        });
+      }
+
+      if (!user.email_confirmed_at) {
+        return res.status(403).json({
+          error: "Debes verificar tu correo electrónico antes de compartir precios.",
+        });
+      }
+
+      const { product, price_usd, price_bs, supermarket, city, state } = req.body;
+
+      const authUserId = user.id;
+      const userEmail = user.email ?? null;
+      const userName = String(
+        user.user_metadata?.name ||
+          user.email?.split("@")[0] ||
+          "Usuario"
+      ).trim();
+
+      const priceUsd = Number(price_usd) || 0;
+      const priceBs = Number(price_bs) || 0;
+
+      if (!product || priceUsd <= 0) {
+        return res.status(400).json({
+          error: "Producto y precio son obligatorios",
+        });
+      }
+
+      const result = await pool.query(
+        `
+        INSERT INTO community_prices (
+          product,
+          price_usd,
+          price_bs,
+          supermarket,
+          city,
+          state,
+          user_name,
+          user_email,
+          auth_user_id,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        RETURNING *
+        `,
+        [
+          product.trim(),
+          priceUsd,
+          priceBs,
+          supermarket?.trim() || "No especificado",
+          city?.trim() || "No especificada",
+          state?.trim() || "No especificado",
+          userName,
+          userEmail,
+          authUserId,
+        ]
       );
+
+      return res.json(result.rows[0]);
     } catch (err) {
-      console.error(
-        "Error al registrar precio comunitario:",
-        err
-      );
-
+      console.error("Error al registrar precio comunitario:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
     }
   }
 );
-
-// ----------------------------------------------------------
-// ELIMINAR PRECIO COMUNITARIO
-// ----------------------------------------------------------
 
 app.delete(
   [
@@ -1519,37 +1070,26 @@ app.delete(
   ],
   async (req, res) => {
     try {
-      const id =
-        Number(req.params.id);
+      const id = Number(req.params.id);
 
-      const result =
-        await pool.query(
-          `
-          DELETE FROM community_prices
-          WHERE id = $1
-          RETURNING id
-          `,
-          [id]
-        );
+      const result = await pool.query(
+        `
+        DELETE FROM community_prices
+        WHERE id = $1
+        RETURNING id
+        `,
+        [id]
+      );
 
-      if (
-        result.rows.length === 0
-      ) {
+      if (result.rows.length === 0) {
         return res.status(404).json({
-          error:
-            "Precio no encontrado",
+          error: "Precio no encontrado",
         });
       }
 
-      return res.json({
-        success: true,
-      });
+      return res.json({ success: true });
     } catch (err) {
-      console.error(
-        "Error al eliminar precio comunitario:",
-        err
-      );
-
+      console.error("Error al eliminar precio comunitario:", err);
       return res.status(500).json({
         error: "Error interno del servidor",
       });
@@ -1568,23 +1108,15 @@ app.get(
   ],
   async (req, res) => {
     try {
-      const result =
-        await pool.query(
-          "SELECT NOW() AS now"
-        );
+      const result = await pool.query("SELECT NOW() AS now");
 
       return res.json({
         success: true,
         database: "connected",
-        timestamp:
-          result.rows[0].now,
+        timestamp: result.rows[0].now,
       });
     } catch (err) {
-      console.error(
-        "Error en health check:",
-        err
-      );
-
+      console.error("Error en health check:", err);
       return res.status(500).json({
         success: false,
         database: "disconnected",
@@ -1594,28 +1126,47 @@ app.get(
 );
 
 // ==========================================================
+// FRONTEND WEB (VITE)
+// ==========================================================
+
+const frontendDist = path.join(process.cwd(), "dist");
+const frontendIndex = path.join(frontendDist, "index.html");
+
+if (fs.existsSync(frontendIndex)) {
+  app.use(express.static(frontendDist));
+
+  app.use((req, res, next) => {
+    if (req.method !== "GET") {
+      return next();
+    }
+
+    if (
+      req.path.startsWith("/api/") ||
+      req.path.startsWith("/app-api/")
+    ) {
+      return next();
+    }
+
+    return res.sendFile(frontendIndex);
+  });
+} else {
+  console.warn(
+    "⚠️ No se encontró dist/index.html. El frontend Vite no está disponible en este despliegue."
+  );
+}
+
+// ==========================================================
 // INICIO
 // ==========================================================
 
 app.listen(PORT, () => {
-  console.log(
-    `🚀 Rinde+ server corriendo en puerto ${PORT}`
-  );
+  console.log(`🚀 Rinde+ server corriendo en puerto ${PORT}`);
 
-  pool.query(
-    "SELECT NOW() AS now",
-    (err, result) => {
-      if (err) {
-        console.error(
-          "❌ Error de conexión a PostgreSQL:",
-          err
-        );
-      } else {
-        console.log(
-          "✅ Conectado exitosamente a Supabase PostgreSQL:",
-          result.rows[0].now
-        );
-      }
+  pool.query("SELECT NOW() AS now", (err, result) => {
+    if (err) {
+      console.error("❌ Error de conexión a PostgreSQL:", err);
+    } else {
+      console.log("✅ Conectado exitosamente a Supabase PostgreSQL:", result.rows[0].now);
     }
-  );
+  });
 });
