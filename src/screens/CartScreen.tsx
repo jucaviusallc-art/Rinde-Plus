@@ -54,19 +54,6 @@ export const CartScreen: React.FC<CartScreenProps> = ({
     cartSummary?.items || [];
 
   // ============================================================
-  // TOTAL REAL DEL CARRITO EN BOLÍVARES
-  // ============================================================
-
-  const totalBs = items.reduce(
-    (sum, item) =>
-      sum +
-      Number(
-        item.subtotal_bs || 0
-      ),
-    0
-  );
-
-  // ============================================================
   // TASA DE LA MONEDA ACTUALMENTE SELECCIONADA
   // ============================================================
 
@@ -75,6 +62,32 @@ export const CartScreen: React.FC<CartScreenProps> = ({
     selectedRate > 0
       ? selectedRate
       : 0;
+
+  // ============================================================
+  // TOTAL REAL DEL CARRITO EN BOLÍVARES
+  // ============================================================
+
+  const totalBs = items.reduce((sum, item) => {
+    const quantity = Math.max(1, Number(item.quantity) || 1);
+    const itemRate =
+      Number(item.rate_used) > 0
+        ? Number(item.rate_used)
+        : activeRate;
+
+    const priceBs =
+      Number(item.price_bs) > 0
+        ? Number(item.price_bs)
+        : Number(item.price_usd) > 0 && itemRate > 0
+          ? Number(item.price_usd) * itemRate
+          : 0;
+
+    const subtotalBs =
+      Number(item.subtotal_bs) > 0
+        ? Number(item.subtotal_bs)
+        : priceBs * quantity;
+
+    return sum + subtotalBs;
+  }, 0);
 
   const currencySymbol =
     monedaSeleccionada === "EUR"
@@ -96,19 +109,14 @@ export const CartScreen: React.FC<CartScreenProps> = ({
       : 0;
 
   // ============================================================
-  // PRESUPUESTO
+  // PRESUPUESTO (Coherente con server.ts: monto - spent - cart)
   // ============================================================
 
-  const montoBs =
-    Number(
-      budget?.monto_bs || 0
-    );
-
-  const remainingBs =
-    Math.max(
-      0,
-      montoBs - totalBs
-    );
+  const montoBs = Number(budget?.monto_bs || 0);
+  const spentBs = Number(budget?.spent_bs || 0);
+  
+  // Cálculo exacto igual al backend
+  const remainingBs = montoBs - spentBs - totalBs;
 
   const remainingSelectedCurrency =
     activeRate > 0
@@ -155,12 +163,8 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   return (
     <div className="max-w-4xl mx-auto space-y-3 py-1">
 
-      {/* ======================================================
-          ENCABEZADO
-          ====================================================== */}
-
+      {/* ENCABEZADO */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
             <ShoppingCart className="w-7 h-7 text-[#2E7D32]" />
@@ -175,10 +179,6 @@ export const CartScreen: React.FC<CartScreenProps> = ({
             en tu lista activa
           </p>
         </div>
-
-        {/* ==================================================
-            AGREGAR MÁS PRODUCTOS
-            ================================================== */}
 
         <button
           type="button"
@@ -195,12 +195,8 @@ export const CartScreen: React.FC<CartScreenProps> = ({
         </button>
       </div>
 
-      {/* ======================================================
-          INFORMACIÓN DE LA TASA
-          ====================================================== */}
-
+      {/* INFORMACIÓN DE LA TASA */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
-
         <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
           Moneda de referencia
         </span>
@@ -220,10 +216,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
         </span>
       </div>
 
-      {/* ======================================================
-          ERROR
-          ====================================================== */}
-
+      {/* ERROR */}
       {errorMsg && (
         <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-2xl text-sm flex items-center gap-3">
           <AlertCircle className="w-5 h-5 shrink-0" />
@@ -231,28 +224,16 @@ export const CartScreen: React.FC<CartScreenProps> = ({
         </div>
       )}
 
-      {/* ======================================================
-          RESUMEN COMPACTO
-          IMPORTANTE: LOS MÓDULOS SE MANTIENEN UNO DEBAJO
-          DEL OTRO
-          ====================================================== */}
-
+      {/* RESUMEN COMPACTO */}
       <div className="flex flex-col gap-2">
-
-        {/* ==================================================
-            TOTAL DE COMPRA
-            ================================================== */}
-
+        {/* TOTAL DE COMPRA */}
         <div className="bg-slate-900 text-white rounded-2xl px-4 py-3 shadow-sm">
-
           <div className="flex items-center justify-between gap-3">
-
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Total de Compra
             </span>
 
             <div className="text-right">
-
               <div className="text-xl sm:text-2xl font-black text-emerald-400 tracking-tight leading-none">
                 Bs{" "}
                 {totalBs.toLocaleString(
@@ -271,15 +252,11 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 )}{" "}
                 {currencyLabel}
               </div>
-
             </div>
           </div>
         </div>
 
-        {/* ==================================================
-            TE QUEDAN
-            ================================================== */}
-
+        {/* TE QUEDAN */}
         <div
           className={`rounded-2xl px-4 py-3 shadow-sm border transition-colors ${
             remainingBs < 0
@@ -287,15 +264,12 @@ export const CartScreen: React.FC<CartScreenProps> = ({
               : "bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-slate-900 dark:text-white"
           }`}
         >
-
           <div className="flex items-center justify-between gap-3">
-
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Te Quedan
             </span>
 
             <div className="text-right">
-
               <div
                 className={`text-xl sm:text-2xl font-black tracking-tight leading-none ${
                   remainingBs < 0
@@ -320,20 +294,14 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 )}{" "}
                 {currencyLabel}
               </div>
-
             </div>
           </div>
         </div>
       </div>
 
-      {/* ======================================================
-          CARRITO VACÍO
-          ====================================================== */}
-
+      {/* CARRITO VACÍO */}
       {items.length === 0 ? (
-
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-10 text-center space-y-4">
-
           <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-full flex items-center justify-center mx-auto">
             <ShoppingBag className="w-8 h-8" />
           </div>
@@ -364,23 +332,11 @@ export const CartScreen: React.FC<CartScreenProps> = ({
             </span>
           </button>
         </div>
-
       ) : (
-
-        /* ====================================================
-           LISTA DE PRODUCTOS
-           ==================================================== */
-
+        /* LISTA DE PRODUCTOS */
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xs space-y-4">
-
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-
             {items.map((item) => {
-
-              // ------------------------------------------------
-              // MONEDA REAL DEL PRODUCTO
-              // ------------------------------------------------
-
               const itemCurrency: Currency =
                 item.currency === "EUR"
                   ? "EUR"
@@ -394,34 +350,27 @@ export const CartScreen: React.FC<CartScreenProps> = ({
               const itemCurrencyLabel =
                 itemCurrency;
 
-              // ------------------------------------------------
-              // TASA UTILIZADA AL REGISTRAR EL PRODUCTO
-              // ------------------------------------------------
-
               const itemRate =
-                Number(
-                  item.rate_used || 0
-                );
-
-              // ------------------------------------------------
-              // PRECIO EN BS
-              // ------------------------------------------------
+                Number(item.rate_used) > 0
+                  ? Number(item.rate_used)
+                  : activeRate;
 
               const unitBs =
-                Number(
-                  item.price_bs || 0
-                );
+                Number(item.price_bs) > 0
+                  ? Number(item.price_bs)
+                  : Number(item.price_usd) > 0 &&
+                      itemRate > 0
+                    ? Number(item.price_usd) * itemRate
+                    : 0;
 
               const subtotalBs =
-                Number(
-                  item.subtotal_bs ||
-                    unitBs *
-                      item.quantity
-                );
-
-              // ------------------------------------------------
-              // PRECIO ORIGINAL EN MONEDA
-              // ------------------------------------------------
+                Number(item.subtotal_bs) > 0
+                  ? Number(item.subtotal_bs)
+                  : unitBs *
+                    Math.max(
+                      1,
+                      Number(item.quantity) || 1
+                    );
 
               const unitCurrencyPrice =
                 Number(
@@ -429,28 +378,26 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 );
 
               const subtotalCurrency =
-                Number(
-                  item.subtotal_usd ??
-                    unitCurrencyPrice *
-                      item.quantity
-                );
+                Number(item.subtotal_usd) > 0
+                  ? Number(item.subtotal_usd)
+                  : unitCurrencyPrice *
+                    Math.max(
+                      1,
+                      Number(item.quantity) || 1
+                    );
 
               return (
                 <div
                   key={item.id}
                   className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                 >
-
                   {/* DETALLES */}
-
                   <div className="flex-1">
-
                     <h4 className="font-bold text-slate-900 dark:text-white text-base">
                       {item.name}
                     </h4>
 
                     <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-
                       <span>
                         {itemSymbol}
                         {unitCurrencyPrice.toFixed(
@@ -491,30 +438,21 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                   </div>
 
                   {/* CANTIDAD + SUBTOTAL */}
-
                   <div className="flex items-center justify-between sm:justify-end gap-4">
-
-                    {/* CONTROLES */}
-
+                    {/* CONTROLES (Math.max simplificado) */}
                     <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700">
-
                       <button
                         type="button"
                         onClick={() =>
                           onUpdateQuantity(
                             item.id,
-                            Math.max(
-                              1,
-                              item.quantity - 1
-                            )
+                            Math.max(1, Number(item.quantity) - 1)
                           )
                         }
                         className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-200 transition-colors flex items-center justify-center disabled:opacity-40"
                         title="Disminuir"
                         id={`btn-cart-decrease-${item.id}`}
-                        disabled={
-                          item.quantity <= 1
-                        }
+                        disabled={item.quantity <= 1}
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
@@ -528,7 +466,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                         onClick={() =>
                           onUpdateQuantity(
                             item.id,
-                            item.quantity + 1
+                            Number(item.quantity) + 1
                           )
                         }
                         className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-200 transition-colors flex items-center justify-center"
@@ -540,9 +478,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                     </div>
 
                     {/* SUBTOTAL */}
-
                     <div className="text-right min-w-[110px]">
-
                       <div className="font-extrabold text-slate-900 dark:text-white text-base">
                         Bs{" "}
                         {subtotalBs.toLocaleString(
@@ -564,7 +500,6 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                     </div>
 
                     {/* ELIMINAR */}
-
                     <button
                       type="button"
                       onClick={() =>
@@ -578,21 +513,15 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>
-
                   </div>
                 </div>
               );
             })}
           </div>
 
-          {/* ==================================================
-              RESUMEN FINAL
-              ================================================== */}
-
+          {/* RESUMEN FINAL */}
           <div className="pt-5 border-t border-slate-200 dark:border-slate-800 space-y-3">
-
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold">
-
               <span>
                 Total acumulado ({currencyLabel}):
               </span>
@@ -607,7 +536,6 @@ export const CartScreen: React.FC<CartScreenProps> = ({
             </div>
 
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-semibold">
-
               <span>
                 Total en bolívares:
               </span>
@@ -624,10 +552,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
               </span>
             </div>
 
-            {/* ==================================================
-                FINALIZAR COMPRA
-                ================================================== */}
-
+            {/* FINALIZAR COMPRA */}
             <button
               type="button"
               onClick={handleCheckout}
@@ -652,7 +577,6 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 </>
               )}
             </button>
-
           </div>
         </div>
       )}
