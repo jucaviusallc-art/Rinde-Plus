@@ -20,7 +20,7 @@ interface CartScreenProps {
   budget: Budget | null;
   cartSummary: CartSummary | null;
   monedaSeleccionada: Currency;
-  selectedRate: number;
+  selectedRate: number | null;
   onUpdateQuantity: (
     id: number,
     quantity: number
@@ -58,6 +58,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   // ============================================================
 
   const activeRate =
+    selectedRate !== null &&
     Number.isFinite(selectedRate) &&
     selectedRate > 0
       ? selectedRate

@@ -99,25 +99,27 @@ export default function App() {
   const [isLoading, setIsLoading] =
     useState<boolean>(true);
 
-const [currentUser, setCurrentUser] =
-  useState<Awaited<ReturnType<typeof getCurrentUser>>>(null);
+  const [currentUser, setCurrentUser] =
+    useState<Awaited<ReturnType<typeof getCurrentUser>>>(null);
 
-useEffect(() => {
-  const loadCurrentUser = async () => {
-    try {
-      const user = await getCurrentUser();
-      setCurrentUser(user);
-    } catch (error) {
-      console.error("Error obteniendo usuario actual:", error);
-    }
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const user = await getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error("Error obteniendo usuario actual:", error);
+      }
+    };
+
+    loadCurrentUser();
+  }, []);
+
+  const handleAuthSuccess = async () => {
+    const user = await getCurrentUser();
+    setCurrentUser(user);
   };
 
-  loadCurrentUser();
-}, []);
-const handleAuthSuccess = async () => {
-  const user = await getCurrentUser();
-  setCurrentUser(user);
-};
   // --------------------------------------------------
   // REFS PARA EVITAR RESPUESTAS ANTIGUAS
   // --------------------------------------------------
@@ -436,7 +438,8 @@ const handleAuthSuccess = async () => {
         monedaRef.current
       );
     };
-// --------------------------------------------------
+
+  // --------------------------------------------------
   // ELIMINAR REGISTRO DEL HISTORIAL
   // --------------------------------------------------
 
@@ -463,6 +466,7 @@ const handleAuthSuccess = async () => {
       alert("No fue posible vaciar el historial. Intenta nuevamente.");
     }
   };
+
   // --------------------------------------------------
   // ACTUALIZAR TASAS MANUALMENTE
   // --------------------------------------------------
@@ -549,16 +553,6 @@ const handleAuthSuccess = async () => {
   // AISLAMIENTO ESTRICTO EUR / USD
   // --------------------------------------------------
 
-  /*
-   * 1. activeSelectedRate:
-   *
-   * Si es EUR:
-   * utiliza estrictamente la tasa EUR.
-   *
-   * Si es USD:
-   * permite tasa custom o USD oficial.
-   */
-
   const activeSelectedRate =
     monedaSeleccionada === "EUR"
       ? selectedRateInfo?.rate ?? null
@@ -568,17 +562,6 @@ const handleAuthSuccess = async () => {
         : selectedRateInfo?.rate ??
           rateInfo?.rate ??
           null;
-
-  /*
-   * 2. activeRateInfo:
-   *
-   * Si es EUR:
-   * devuelve únicamente selectedRateInfo.
-   *
-   * Si es USD:
-   * permite respaldo entre selectedRateInfo
-   * y rateInfo.
-   */
 
   const activeRateInfo =
     monedaSeleccionada === "EUR"
@@ -775,40 +758,43 @@ const handleAuthSuccess = async () => {
 
               {/* HISTORIAL */}
 
-                            {currentScreen ===
-                              "historial" && (
-                              <HistoryScreen
-                                history={
-                                  history
-                                }
-                                onDeleteHistoryItem={
-                                  handleDeleteHistoryItem
-                                }
-                                onClearHistory={
-                                  handleClearHistory
-                                }
-                              />
-                            )}
+              {currentScreen ===
+                "historial" && (
+                <HistoryScreen
+                  history={
+                    history
+                  }
+                  onDeleteHistoryItem={
+                    handleDeleteHistoryItem
+                  }
+                  onClearHistory={
+                    handleClearHistory
+                  }
+                />
+              )}
 
               {/* COMUNIDAD */}
 
               {currentScreen ===
                 "comunidad" && (
                 <CommunityScreen
-  isAuthenticated={!!currentUser}
-  onRequireAuth={() => setCurrentScreen("auth")}
-/>
+                  isAuthenticated={!!currentUser}
+                  onRequireAuth={() => setCurrentScreen("auth")}
+                />
               )}
-{/* AUTENTICACIÓN */}
 
-{currentScreen === "auth" && (
-  <AuthScreen
-    onLoginSuccess={async () => {
-      await handleAuthSuccess();
-      setCurrentScreen("comunidad");
-    }}
-  />
-)}
+              {/* AUTENTICACIÓN */}
+
+              {currentScreen === "auth" && (
+                <AuthScreen
+                  defaultMode="register"
+                  onLoginSuccess={async () => {
+                    await handleAuthSuccess();
+                    setCurrentScreen("comunidad");
+                  }}
+                />
+              )}
+
               {/* PERFIL */}
 
               {currentScreen ===

@@ -7,10 +7,11 @@ import {
 
 interface AuthScreenProps {
   onLoginSuccess: () => void;
+  defaultMode?: "login" | "register";
 }
 
-export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
-  const [mode, setMode] = useState<"login" | "register">("login");
+export function AuthScreen({ onLoginSuccess, defaultMode = "register" }: AuthScreenProps) {
+  const [mode, setMode] = useState<"login" | "register">(defaultMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -108,10 +109,10 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
               : "Crear cuenta"}
           </h1>
 
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
             {mode === "login"
               ? "Accede a tu cuenta de Rinde+"
-              : "Regístrate para compartir precios en la Comunidad"}
+              : "Para compartir precios en la Comunidad necesitas una cuenta. Crea tu cuenta Rinde+ e inicia sesión para publicar y ayudar a otros usuarios a encontrar los mejores precios."}
           </p>
         </div>
 
@@ -197,7 +198,7 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-[#2E7D32] hover:bg-[#256628] text-white font-semibold py-2.5 disabled:opacity-50"
+            className="w-full rounded-lg bg-[#2E7D32] hover:bg-[#256628] text-white font-semibold py-2.5 disabled:opacity-50 transition-all"
           >
             {loading
               ? "Procesando..."
@@ -217,11 +218,11 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                   : "login"
               )
             }
-            className="text-sm text-[#2E7D32] font-medium"
+            className="text-sm text-[#2E7D32] font-medium hover:underline"
           >
             {mode === "login"
               ? "¿No tienes cuenta? Crear cuenta"
-              : "¿Ya tienes cuenta? Iniciar sesión"}
+              : "¿Ya tienes una cuenta? Iniciar sesión"}
           </button>
 
           <button
