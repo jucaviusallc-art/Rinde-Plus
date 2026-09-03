@@ -4,14 +4,11 @@ import {
   Mail,
   Sun,
   Moon,
-  ShieldCheck,
   Info,
   LogOut,
   Settings,
-  Globe,
   CheckCircle2,
   TrendingUp,
-  RefreshCw,
 } from "lucide-react";
 import { Budget, ExchangeRateInfo, ScreenName } from "../types";
 
@@ -23,6 +20,7 @@ interface ProfileScreenProps {
   onRefreshRate: () => void;
   isRefreshingRate: boolean;
   onNavigate: (screen: ScreenName) => void;
+  currentUser?: any | null; // <-- Prop para evaluar el usuario actual
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
@@ -33,8 +31,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onRefreshRate,
   isRefreshingRate,
   onNavigate,
+  currentUser,
 }) => {
   const activeRate = budget?.active_rate || rateInfo?.rate || 72.5;
+
+  // Verificamos si hay un usuario autenticado y con correo verificado
+  const isLoggedIn = Boolean(currentUser);
+  const isVerified = Boolean(currentUser?.email_confirmed_at || currentUser?.confirmed_at);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 py-2">
@@ -50,21 +53,30 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
       {/* User Info Card */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xs flex items-center gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-linear-to-tr from-[#2E7D32] to-emerald-500 text-white font-black text-2xl flex items-center justify-center shadow-md">
-          CR
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#2E7D32] to-emerald-500 text-white font-black text-2xl flex items-center justify-center shadow-md">
+          {isLoggedIn && currentUser?.email ? currentUser.email.substring(0, 2).toUpperCase() : "CR"}
         </div>
         <div className="flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">
               Comprador Rinde+
             </h2>
-            <span className="p-1 bg-emerald-100 dark:bg-emerald-950 text-[#2E7D32] dark:text-emerald-300 rounded-full text-[10px] font-bold">
-              Verificado
-            </span>
+
+            {isLoggedIn && isVerified ? (
+              <span className="px-2.5 py-0.5 bg-emerald-100 dark:bg-emerald-950 text-[#2E7D32] dark:text-emerald-300 rounded-full text-[10px] font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Verificado
+              </span>
+            ) : (
+              <span className="px-2.5 py-0.5 bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 rounded-full text-[10px] font-bold">
+                {isLoggedIn ? "Cuenta no verificada" : "Cuenta no registrada"}
+              </span>
+            )}
           </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
+
+          <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1">
             <Mail className="w-4 h-4 text-slate-400" />
-            comprador@rinde.ve
+            {isLoggedIn && currentUser?.email ? currentUser.email : "Regístrate para verificar tu cuenta"}
           </p>
         </div>
       </div>

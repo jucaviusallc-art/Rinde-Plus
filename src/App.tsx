@@ -90,7 +90,7 @@ export default function App() {
     });
 
   // --------------------------------------------------
-  // ESTADOS DE CARGA
+  // ESTADOS DE CARGA Y AUTENTICACIÓN
   // --------------------------------------------------
 
   const [isRefreshingRate, setIsRefreshingRate] =
@@ -350,16 +350,12 @@ export default function App() {
           tasa_custom
         );
 
-      // Actualizar inmediatamente el presupuesto
       setBudget(updated);
 
-      // Ir inmediatamente a Control
       setCurrentScreen(
         "dashboard"
       );
 
-      // Actualizar los demás datos
-      // sin bloquear la navegación
       await refreshAppData(
         monedaRef.current
       );
@@ -820,6 +816,9 @@ export default function App() {
                   }
                   onNavigate={
                     setCurrentScreen
+                  }
+                  currentUser={
+                    currentUser
                   }
                 />
               )}
