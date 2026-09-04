@@ -61,6 +61,41 @@ function roundMoney(value: number): number {
 }
 
 // ==========================================================
+// COMUNIDAD: LIMPIEZA Y RETENCIÓN DE 7 DÍAS
+// ==========================================================
+
+async function cleanupExpiredCommunityPrices(): Promise<number> {
+  try {
+    const result = await pool.query(
+      `
+      DELETE FROM community_prices
+      WHERE created_at < NOW() - INTERVAL '7 days'
+      RETURNING id
+      `
+    );
+    return result.rowCount || 0;
+  } catch (err) {
+    console.error("Error al limpiar registros vencidos de la comunidad:", err);
+    return 0;
+  }
+}
+
+// Limpieza periódica automática cada hora en segundo plano
+const COMMUNITY_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+
+setInterval(() => {
+  cleanupExpiredCommunityPrices()
+    .then((deleted) => {
+      if (deleted > 0) {
+        console.log(`🧹 Comunidad: ${deleted} registro(s) vencido(s) eliminado(s) automáticamente.`);
+      }
+    })
+    .catch((err) => {
+      console.error("Error en limpieza automática programada:", err);
+    });
+}, COMMUNITY_CLEANUP_INTERVAL_MS);
+
+// ==========================================================
 // TASAS DE CAMBIO
 // ==========================================================
 
@@ -790,7 +825,7 @@ app.delete(
 );
 
 // ==========================================================
-// COMUNIDAD
+// COMUNIDAD (Con política de retención estricta a 7 días)
 // ==========================================================
 
 app.get(
@@ -800,9 +835,13 @@ app.get(
   ],
   async (req, res) => {
     try {
+      await cleanupExpiredCommunityPrices();
+
       const { product, city, state, sort } = req.query;
       const values: any[] = [];
-      const conditions: string[] = [];
+      const conditions: string[] = [
+        "created_at >= NOW() - INTERVAL '7 days'",
+      ];
 
       if (typeof product === "string" && product.trim()) {
         values.push(`%${product.trim()}%`);
@@ -820,10 +859,7 @@ app.get(
       }
 
       let query = `SELECT * FROM community_prices`;
-
-      if (conditions.length > 0) {
-        query += " WHERE " + conditions.join(" AND ");
-      }
+      query += " WHERE " + conditions.join(" AND ");
 
       if (sort === "price_asc") {
         query += " ORDER BY price_usd ASC";
@@ -851,9 +887,13 @@ app.get(
   ],
   async (req, res) => {
     try {
+      await cleanupExpiredCommunityPrices();
+
       const { product, city, state, sort } = req.query;
       const values: any[] = [];
-      const conditions: string[] = [];
+      const conditions: string[] = [
+        "created_at >= NOW() - INTERVAL '7 days'",
+      ];
 
       if (typeof product === "string" && product.trim()) {
         values.push(`%${product.trim()}%`);
@@ -871,11 +911,7 @@ app.get(
       }
 
       let query = `SELECT * FROM community_prices`;
-
-      if (conditions.length > 0) {
-        query += " WHERE " + conditions.join(" AND ");
-      }
-
+      query += " WHERE " + conditions.join(" AND ");
       query += " ORDER BY created_at DESC";
 
       const result = await pool.query(query, values);
@@ -1079,10 +1115,6 @@ app.delete(
   ],
   async (req, res) => {
     try {
-      // ========================================================
-      // AUTENTICACIÓN
-      // ========================================================
-
       const authHeader = req.headers.authorization;
 
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -1099,7 +1131,6 @@ app.delete(
         });
       }
 
-      // Verificar el usuario directamente con Supabase Auth
       const {
         data: { user },
         error: authError,
@@ -1111,10 +1142,6 @@ app.delete(
         });
       }
 
-      // ========================================================
-      // VALIDAR ID DEL PRECIO
-      // ========================================================
-
       const id = Number(req.params.id);
 
       if (!Number.isInteger(id) || id <= 0) {
@@ -1122,10 +1149,6 @@ app.delete(
           error: "Identificador de precio no válido.",
         });
       }
-
-      // ========================================================
-      // BUSCAR EL REGISTRO
-      // ========================================================
 
       const priceResult = await pool.query(
         `
@@ -1148,37 +1171,21 @@ app.delete(
 
       const priceRecord = priceResult.rows[0];
 
-      // ========================================================
-      // IDENTIFICAR ADMINISTRADOR
-      // ========================================================
-
       const ADMIN_EMAIL = "jucaviusallc@gmail.com";
 
       const isAdmin =
         !!user.email &&
         user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
-      // ========================================================
-      // VERIFICAR PROPIETARIO
-      // ========================================================
-
       const isOwner =
         priceRecord.auth_user_id &&
         priceRecord.auth_user_id === user.id;
-
-      // ========================================================
-      // AUTORIZACIÓN
-      // ========================================================
 
       if (!isOwner && !isAdmin) {
         return res.status(403).json({
           error: "No tienes autorización para eliminar este precio.",
         });
       }
-
-      // ========================================================
-      // ELIMINAR
-      // ========================================================
 
       const deleteResult = await pool.query(
         `
