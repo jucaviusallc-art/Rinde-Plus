@@ -553,8 +553,8 @@ export default function App() {
     monedaSeleccionada === "EUR"
       ? selectedRateInfo?.rate ?? null
       : budget?.tipo_tasa === "custom" &&
-        budget.active_rate != null
-        ? budget.active_rate
+        Number(budget.tasa_custom) > 0
+        ? Number(budget.tasa_custom)
         : selectedRateInfo?.rate ??
           rateInfo?.rate ??
           null;
