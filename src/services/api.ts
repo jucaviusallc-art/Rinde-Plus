@@ -158,22 +158,6 @@ function normalizeDolarApiRate(
     );
   }
 
-  /*
-   * DolarApi devuelve:
-   *
-   * {
-   *   fuente,
-   *   nombre,
-   *   moneda,
-   *   compra,
-   *   venta,
-   *   promedio,
-   *   fechaActualizacion
-   * }
-   *
-   * Para Rinde+ utilizamos "promedio".
-   */
-
   const rate = Number(data.promedio);
 
   if (
@@ -189,12 +173,6 @@ function normalizeDolarApiRate(
     currency === "USD"
       ? "USD"
       : "EUR";
-
-  /*
-   * Validación adicional:
-   * evita aceptar accidentalmente una
-   * respuesta de otra moneda.
-   */
 
   if (
     data.moneda &&
@@ -349,23 +327,6 @@ export const apiService = {
   async getExchangeRate(
     currency: Currency = "USD"
   ): Promise<ExchangeRateInfo> {
-
-    /*
-     * IMPORTANTE:
-     *
-     * La tasa oficial se obtiene directamente
-     * desde DolarApi.
-     *
-     * USD:
-     * https://ve.dolarapi.com/v1/dolares/oficial
-     *
-     * EUR:
-     * https://ve.dolarapi.com/v1/euros/oficial
-     *
-     * De esta manera NO utilizamos la tasa USD
-     * para calcular artificialmente la tasa EUR.
-     */
-
     try {
       const rate =
         await fetchDolarApiRate(
@@ -380,22 +341,12 @@ export const apiService = {
       return rate;
 
     } catch (e) {
-
       console.warn(
         `Error consultando DolarApi para ${currency}:`,
         e
       );
 
-      /*
-       * Como respaldo, intentamos consultar
-       * nuestro backend.
-       *
-       * Esto solamente se utiliza si DolarApi
-       * no está disponible.
-       */
-
       try {
-
         const url =
           `${API_BASE}/exchange-rate-public` +
           `?currency=${currency}`;
@@ -449,18 +400,10 @@ export const apiService = {
         };
 
       } catch (backendError) {
-
         console.warn(
           `Backend fallback también falló para ${currency}:`,
           backendError
         );
-
-        /*
-         * Último respaldo.
-         *
-         * Estos valores NO se utilizan mientras
-         * DolarApi esté funcionando.
-         */
 
         return {
           rate:
@@ -485,21 +428,10 @@ export const apiService = {
   // --------------------------------------------------
 
   async refreshExchangeRate(): Promise<ExchangeRateInfo> {
-
-    /*
-     * La actualización se realiza directamente
-     * desde DolarApi para evitar depender de una
-     * posible lógica incorrecta del servidor.
-     *
-     * Se consulta USD por defecto, que mantiene
-     * compatibilidad con el método existente.
-     */
-
     try {
       return await fetchDolarApiRate("USD");
 
     } catch (e) {
-
       console.warn(
         "DolarApi refresh failed, using backend:",
         e
@@ -544,7 +476,6 @@ export const apiService = {
       return await res.json();
 
     } catch (e) {
-
       console.warn(
         "API fallback for cart:",
         e
@@ -572,7 +503,6 @@ export const apiService = {
     currency: Currency = "USD",
     rate_used?: number
   ): Promise<void> {
-
     let finalRate = Number(rate_used);
 
     if (!Number.isFinite(finalRate) || finalRate <= 0) {
@@ -592,26 +522,9 @@ export const apiService = {
 
         body: JSON.stringify({
           name,
-
-          /*
-           * Se conserva el nombre del campo
-           * utilizado actualmente por el backend.
-           */
           price_usd: price,
-
           quantity,
-
-          /*
-           * La moneda original del producto
-           * se envía explícitamente.
-           */
           currency,
-
-          /*
-           * Se envía la tasa correspondiente a la
-           * moneda seleccionada para evitar que EUR
-           * utilice accidentalmente la tasa USD.
-           */
           rate_used: finalRate,
         }),
       }
@@ -632,7 +545,6 @@ export const apiService = {
     id: number,
     quantity: number
   ): Promise<void> {
-
     const res = await fetch(
       `${API_BASE}/cart/${id}`,
       {
@@ -659,7 +571,6 @@ export const apiService = {
   async deleteCartItem(
     id: number
   ): Promise<void> {
-
     const res = await fetch(
       `${API_BASE}/cart/${id}`,
       {
@@ -683,7 +594,6 @@ export const apiService = {
     success: boolean;
     record: HistoryRecord;
   }> {
-
     const res = await fetch(
       `${API_BASE}/cart/checkout`,
       {
@@ -693,7 +603,6 @@ export const apiService = {
     );
 
     if (!res.ok) {
-
       const err =
         await res
           .json()
@@ -715,9 +624,7 @@ export const apiService = {
   async getHistory(): Promise<
     HistoryRecord[]
   > {
-
     try {
-
       const res = await fetch(
         `${API_BASE}/history`,
         {
@@ -734,7 +641,6 @@ export const apiService = {
       return await res.json();
 
     } catch (e) {
-
       console.warn(
         "API fallback for history:",
         e
@@ -743,6 +649,7 @@ export const apiService = {
       return [];
     }
   },
+
   async deleteHistoryItem(id: number): Promise<void> {
     const res = await fetch(
       `${API_BASE}/history/${id}`,
@@ -774,6 +681,7 @@ export const apiService = {
       );
     }
   },
+
   // --------------------------------------------------
   // PRECIOS DE LA COMUNIDAD
   // --------------------------------------------------
@@ -781,9 +689,7 @@ export const apiService = {
   async getCommunityPrices(
     filters?: CommunityPriceFilters
   ): Promise<CommunityPrice[]> {
-
     try {
-
       const query =
         buildCommunityQuery(filters);
 
@@ -803,7 +709,6 @@ export const apiService = {
       return await res.json();
 
     } catch (e) {
-
       console.warn(
         "API fallback for community prices:",
         e
@@ -820,9 +725,7 @@ export const apiService = {
   async getCommunityPriceGroups(
     filters?: CommunityPriceFilters
   ): Promise<CommunityPriceGroup[]> {
-
     try {
-
       const query =
         buildCommunityQuery(filters);
 
@@ -851,7 +754,6 @@ export const apiService = {
       return data as CommunityPriceGroup[];
 
     } catch (e) {
-
       console.warn(
         "API fallback for grouped community prices:",
         e
@@ -873,7 +775,6 @@ export const apiService = {
     state: string;
     user_name?: string;
   }): Promise<void> {
-
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -889,7 +790,6 @@ export const apiService = {
       {
         method: "POST",
         headers,
-
         body: JSON.stringify(
           payload
         ),
@@ -897,7 +797,6 @@ export const apiService = {
     );
 
     if (!res.ok) {
-
       const errorData =
         await res
           .json()
@@ -906,6 +805,41 @@ export const apiService = {
       throw new Error(
         errorData.error ||
           "Error publicando precio"
+      );
+    }
+  },
+
+  // --------------------------------------------------
+  // ELIMINAR PRECIO DE LA COMUNIDAD
+  // --------------------------------------------------
+
+  async deleteCommunityPrice(id: number): Promise<void> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const headers = getUserHeaders();
+
+    if (session?.access_token) {
+      headers.Authorization = `Bearer ${session.access_token}`;
+    }
+
+    const res = await fetch(
+      `${API_BASE}/community-prices/${id}`,
+      {
+        method: "DELETE",
+        headers,
+      }
+    );
+
+    if (!res.ok) {
+      const errorData = await res
+        .json()
+        .catch(() => ({}));
+
+      throw new Error(
+        errorData.error ||
+          "Error al eliminar el precio de la comunidad."
       );
     }
   },

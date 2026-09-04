@@ -776,6 +776,7 @@ export default function App() {
                 <CommunityScreen
                   isAuthenticated={!!currentUser}
                   onRequireAuth={() => setCurrentScreen("auth")}
+                  currentUser={currentUser}
                 />
               )}
 

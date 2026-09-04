@@ -61,39 +61,6 @@ function roundMoney(value: number): number {
 }
 
 // ==========================================================
-// COMUNIDAD: SEGURIDAD Y RETENCIÓN
-// ==========================================================
-
-// Se puede configurar uno o varios administradores desde Render/entorno.
-// Se conserva el correo actual de administrador como respaldo para no romper
-// la configuración existente mientras se migra a ADMIN_EMAILS.
-const ADMIN_EMAILS = new Set(
-  (process.env.ADMIN_EMAILS || "jucaviusallc@gmail.com")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean)
-);
-
-function isAdminUser(user: any): boolean {
-  const role = String(user?.app_metadata?.role || "").toLowerCase();
-  const email = String(user?.email || "").trim().toLowerCase();
-
-  return role === "admin" || ADMIN_EMAILS.has(email);
-}
-
-async function cleanupExpiredCommunityPrices(): Promise<number> {
-  const result = await pool.query(
-    `
-    DELETE FROM community_prices
-    WHERE created_at < NOW() - INTERVAL '7 days'
-    RETURNING id
-    `
-  );
-
-  return result.rowCount || 0;
-}
-
-// ==========================================================
 // TASAS DE CAMBIO
 // ==========================================================
 
@@ -826,10 +793,6 @@ app.delete(
 // COMUNIDAD
 // ==========================================================
 
-// Los precios de la Comunidad solo son válidos durante 7 días.
-// Además del filtro de seguridad, se ejecuta una limpieza real de los
-// registros vencidos para que no permanezcan en la base de datos.
-
 app.get(
   [
     "/api/community-prices",
@@ -837,13 +800,9 @@ app.get(
   ],
   async (req, res) => {
     try {
-      await cleanupExpiredCommunityPrices();
-
       const { product, city, state, sort } = req.query;
       const values: any[] = [];
-      const conditions: string[] = [
-        "created_at >= NOW() - INTERVAL '7 days'",
-      ];
+      const conditions: string[] = [];
 
       if (typeof product === "string" && product.trim()) {
         values.push(`%${product.trim()}%`);
@@ -861,7 +820,10 @@ app.get(
       }
 
       let query = `SELECT * FROM community_prices`;
-      query += " WHERE " + conditions.join(" AND ");
+
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
+      }
 
       if (sort === "price_asc") {
         query += " ORDER BY price_usd ASC";
@@ -889,13 +851,9 @@ app.get(
   ],
   async (req, res) => {
     try {
-      await cleanupExpiredCommunityPrices();
-
       const { product, city, state, sort } = req.query;
       const values: any[] = [];
-      const conditions: string[] = [
-        "created_at >= NOW() - INTERVAL '7 days'",
-      ];
+      const conditions: string[] = [];
 
       if (typeof product === "string" && product.trim()) {
         values.push(`%${product.trim()}%`);
@@ -913,7 +871,11 @@ app.get(
       }
 
       let query = `SELECT * FROM community_prices`;
-      query += " WHERE " + conditions.join(" AND ");
+
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
+      }
+
       query += " ORDER BY created_at DESC";
 
       const result = await pool.query(query, values);
@@ -973,7 +935,6 @@ app.get(
         group.average_price_bs =
           pricesBs.reduce((a: number, b: number) => a + b, 0) / pricesBs.length;
 
-        // Recalcular la marca de precio más bajo después de conocer todas las ofertas.
         const lowestUsd = Math.min(...prices);
         group.offers = group.offers.map((offer: any) => ({
           ...offer,
@@ -1118,21 +1079,27 @@ app.delete(
   ],
   async (req, res) => {
     try {
+      // ========================================================
+      // AUTENTICACIÓN
+      // ========================================================
+
       const authHeader = req.headers.authorization;
 
-      if (!authHeader?.startsWith("Bearer ")) {
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return res.status(401).json({
-          error: "Debes iniciar sesión para eliminar precios.",
+          error: "Debes iniciar sesión para eliminar un precio.",
         });
       }
 
-      const token = authHeader.slice(7).trim();
+      const token = authHeader.replace("Bearer ", "").trim();
+
       if (!token) {
         return res.status(401).json({
-          error: "Sesión no válida.",
+          error: "Token de autenticación no válido.",
         });
       }
 
+      // Verificar el usuario directamente con Supabase Auth
       const {
         data: { user },
         error: authError,
@@ -1140,21 +1107,32 @@ app.delete(
 
       if (authError || !user) {
         return res.status(401).json({
-          error: "Sesión no válida.",
+          error: "Sesión no válida o expirada.",
         });
       }
+
+      // ========================================================
+      // VALIDAR ID DEL PRECIO
+      // ========================================================
 
       const id = Number(req.params.id);
 
       if (!Number.isInteger(id) || id <= 0) {
         return res.status(400).json({
-          error: "Identificador no válido.",
+          error: "Identificador de precio no válido.",
         });
       }
 
-      const existing = await pool.query(
+      // ========================================================
+      // BUSCAR EL REGISTRO
+      // ========================================================
+
+      const priceResult = await pool.query(
         `
-        SELECT id, auth_user_id, user_email, created_at
+        SELECT
+          id,
+          auth_user_id,
+          user_email
         FROM community_prices
         WHERE id = $1
         LIMIT 1
@@ -1162,63 +1140,81 @@ app.delete(
         [id]
       );
 
-      if (existing.rows.length === 0) {
+      if (priceResult.rows.length === 0) {
         return res.status(404).json({
-          error: "Precio no encontrado",
+          error: "Precio no encontrado.",
         });
       }
 
-      const record = existing.rows[0];
-      const isOwner =
-        record.auth_user_id &&
-        String(record.auth_user_id) === String(user.id);
+      const priceRecord = priceResult.rows[0];
 
-      const isAdmin = isAdminUser(user);
+      // ========================================================
+      // IDENTIFICAR ADMINISTRADOR
+      // ========================================================
+
+      const ADMIN_EMAIL = "jucaviusallc@gmail.com";
+
+      const isAdmin =
+        !!user.email &&
+        user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+      // ========================================================
+      // VERIFICAR PROPIETARIO
+      // ========================================================
+
+      const isOwner =
+        priceRecord.auth_user_id &&
+        priceRecord.auth_user_id === user.id;
+
+      // ========================================================
+      // AUTORIZACIÓN
+      // ========================================================
 
       if (!isOwner && !isAdmin) {
         return res.status(403).json({
-          error: "No tienes permiso para eliminar este precio.",
+          error: "No tienes autorización para eliminar este precio.",
         });
       }
 
-      await pool.query(
+      // ========================================================
+      // ELIMINAR
+      // ========================================================
+
+      const deleteResult = await pool.query(
         `
         DELETE FROM community_prices
         WHERE id = $1
+        RETURNING id
         `,
         [id]
       );
 
+      if (deleteResult.rows.length === 0) {
+        return res.status(404).json({
+          error: "El precio ya no existe.",
+        });
+      }
+
+      console.log(
+        `🗑️ Precio comunitario ${id} eliminado por ${isAdmin ? "ADMIN" : "PROPIETARIO"}: ${user.email}`
+      );
+
       return res.json({
         success: true,
-        deleted_id: id,
-        deleted_by: isAdmin && !isOwner ? "admin" : "owner",
+        message: isAdmin
+          ? "Precio eliminado por el administrador."
+          : "Precio eliminado correctamente.",
+        id,
       });
     } catch (err) {
       console.error("Error al eliminar precio comunitario:", err);
+
       return res.status(500).json({
-        error: "Error interno del servidor",
+        error: "Error interno del servidor.",
       });
     }
   }
 );
-
-// Limpieza periódica adicional. Si el servidor permanece activo, los registros
-// vencidos se eliminan aunque nadie visite Comunidad. Los GET también ejecutan
-// la limpieza, por lo que la política funciona incluso tras un reinicio.
-const COMMUNITY_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
-
-setInterval(() => {
-  cleanupExpiredCommunityPrices()
-    .then((deleted) => {
-      if (deleted > 0) {
-        console.log(`🧹 Comunidad: ${deleted} registro(s) vencido(s) eliminado(s).`);
-      }
-    })
-    .catch((err) => {
-      console.error("Error en limpieza automática de Comunidad:", err);
-    });
-}, COMMUNITY_CLEANUP_INTERVAL_MS);
 
 // ==========================================================
 // PRUEBA DE CONEXIÓN

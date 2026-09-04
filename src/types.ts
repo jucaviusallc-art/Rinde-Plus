@@ -322,6 +322,10 @@ export interface CommunityPrice {
 
   user_name: string;
 
+  user_email?: string;
+
+  auth_user_id?: string;
+
   is_lowest?: boolean;
 
   created_at: string;

@@ -13,6 +13,7 @@ import {
   Share2,
   Store,
   Tag,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -96,11 +97,13 @@ function getGroupKey(group: CommunityPriceGroup, index: number): string {
 interface CommunityScreenProps {
   isAuthenticated: boolean;
   onRequireAuth: () => void;
+  currentUser?: any | null;
 }
 
 export const CommunityScreen: React.FC<CommunityScreenProps> = ({
   isAuthenticated,
   onRequireAuth,
+  currentUser,
 }) => {
   const [groups, setGroups] = useState<CommunityPriceGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -255,6 +258,29 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
     }
   };
 
+  // Lógica de permisos de eliminación alineada con el backend
+  const userEmail = currentUser?.email?.toLowerCase() || "";
+  const userId = currentUser?.id || "";
+  const ADMIN_EMAIL = "jucaviusallc@gmail.com";
+  const isAdmin = userEmail === ADMIN_EMAIL.toLowerCase();
+
+  const handleDeleteOffer = async (offerId: number) => {
+    if (!confirm("¿Deseas eliminar este precio de la comunidad?")) {
+      return;
+    }
+
+    try {
+      await apiService.deleteCommunityPrice(offerId);
+      await loadGroups();
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "No fue posible eliminar el precio."
+      );
+    }
+  };
+
   const totalReports = groups.reduce(
     (total, group) => total + Number(group.reports || 0),
     0
@@ -289,13 +315,13 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
         <button
           type="button"
           onClick={() => {
-  if (!isAuthenticated) {
-    onRequireAuth();
-    return;
-  }
+            if (!isAuthenticated) {
+              onRequireAuth();
+              return;
+            }
 
-  setShowShareModal(true);
-}}
+            setShowShareModal(true);
+          }}
           id="btn-compartir-precio"
           className="px-5 py-3 bg-[#2E7D32] hover:bg-emerald-800 text-white font-bold text-sm rounded-2xl shadow-md shadow-emerald-900/10 flex items-center justify-center gap-2 shrink-0 transition-all hover:scale-[1.02]"
         >
@@ -493,13 +519,13 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
           <button
             type="button"
             onClick={() => {
-  if (!isAuthenticated) {
-    onRequireAuth();
-    return;
-  }
+              if (!isAuthenticated) {
+                onRequireAuth();
+                return;
+              }
 
-  setShowShareModal(true);
-}}
+              setShowShareModal(true);
+            }}
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#2E7D32] hover:bg-emerald-800 text-white text-xs font-bold rounded-xl"
           >
             <Share2 className="w-4 h-4" />
@@ -654,6 +680,13 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
                         const isLowest =
                           Boolean(offer.is_lowest) || offerIndex === 0;
 
+                        // Validación de propiedad y administrador para mostrar el botón
+                        const isOwner =
+                          offer.auth_user_id &&
+                          userId &&
+                          String(offer.auth_user_id) === String(userId);
+                        const canDelete = currentUser && (isAdmin || isOwner);
+
                         return (
                           <div
                             key={`${offer.id}-${offerIndex}`}
@@ -694,20 +727,33 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
                                 </p>
                               </div>
 
-                              <div className="shrink-0 sm:text-right">
-                                <p
-                                  className={`text-2xl font-black ${
-                                    isLowest
-                                      ? "text-[#2E7D32] dark:text-emerald-400"
-                                      : "text-slate-900 dark:text-white"
-                                  }`}
-                                >
-                                  ${formatUsd(offer.price_usd)}
-                                </p>
+                              <div className="flex items-center gap-4 shrink-0">
+                                <div className="sm:text-right">
+                                  <p
+                                    className={`text-2xl font-black ${
+                                      isLowest
+                                        ? "text-[#2E7D32] dark:text-emerald-400"
+                                        : "text-slate-900 dark:text-white"
+                                    }`}
+                                  >
+                                    ${formatUsd(offer.price_usd)}
+                                  </p>
 
-                                <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                                  ≈ Bs {formatBs(offer.price_bs)}
-                                </p>
+                                  <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                                    ≈ Bs {formatBs(offer.price_bs)}
+                                  </p>
+                                </div>
+
+                                {canDelete && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteOffer(offer.id)}
+                                    className="p-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 rounded-xl transition-colors"
+                                    title="Eliminar este precio"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>
