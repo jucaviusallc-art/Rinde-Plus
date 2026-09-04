@@ -61,6 +61,39 @@ function roundMoney(value: number): number {
 }
 
 // ==========================================================
+// COMUNIDAD: SEGURIDAD Y RETENCIÓN
+// ==========================================================
+
+// Se puede configurar uno o varios administradores desde Render/entorno.
+// Se conserva el correo actual de administrador como respaldo para no romper
+// la configuración existente mientras se migra a ADMIN_EMAILS.
+const ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS || "jucaviusallc@gmail.com")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+function isAdminUser(user: any): boolean {
+  const role = String(user?.app_metadata?.role || "").toLowerCase();
+  const email = String(user?.email || "").trim().toLowerCase();
+
+  return role === "admin" || ADMIN_EMAILS.has(email);
+}
+
+async function cleanupExpiredCommunityPrices(): Promise<number> {
+  const result = await pool.query(
+    `
+    DELETE FROM community_prices
+    WHERE created_at < NOW() - INTERVAL '7 days'
+    RETURNING id
+    `
+  );
+
+  return result.rowCount || 0;
+}
+
+// ==========================================================
 // TASAS DE CAMBIO
 // ==========================================================
 
@@ -793,6 +826,10 @@ app.delete(
 // COMUNIDAD
 // ==========================================================
 
+// Los precios de la Comunidad solo son válidos durante 7 días.
+// Además del filtro de seguridad, se ejecuta una limpieza real de los
+// registros vencidos para que no permanezcan en la base de datos.
+
 app.get(
   [
     "/api/community-prices",
@@ -800,9 +837,13 @@ app.get(
   ],
   async (req, res) => {
     try {
+      await cleanupExpiredCommunityPrices();
+
       const { product, city, state, sort } = req.query;
       const values: any[] = [];
-      const conditions: string[] = [];
+      const conditions: string[] = [
+        "created_at >= NOW() - INTERVAL '7 days'",
+      ];
 
       if (typeof product === "string" && product.trim()) {
         values.push(`%${product.trim()}%`);
@@ -820,10 +861,7 @@ app.get(
       }
 
       let query = `SELECT * FROM community_prices`;
-
-      if (conditions.length > 0) {
-        query += " WHERE " + conditions.join(" AND ");
-      }
+      query += " WHERE " + conditions.join(" AND ");
 
       if (sort === "price_asc") {
         query += " ORDER BY price_usd ASC";
@@ -851,9 +889,13 @@ app.get(
   ],
   async (req, res) => {
     try {
+      await cleanupExpiredCommunityPrices();
+
       const { product, city, state, sort } = req.query;
       const values: any[] = [];
-      const conditions: string[] = [];
+      const conditions: string[] = [
+        "created_at >= NOW() - INTERVAL '7 days'",
+      ];
 
       if (typeof product === "string" && product.trim()) {
         values.push(`%${product.trim()}%`);
@@ -871,15 +913,10 @@ app.get(
       }
 
       let query = `SELECT * FROM community_prices`;
-
-      if (conditions.length > 0) {
-        query += " WHERE " + conditions.join(" AND ");
-      }
-
+      query += " WHERE " + conditions.join(" AND ");
       query += " ORDER BY created_at DESC";
 
       const result = await pool.query(query, values);
-
       const groups = new Map<string, any>();
 
       for (const row of result.rows) {
@@ -896,6 +933,7 @@ app.get(
             average_price_bs: Number(row.price_bs),
             reports: 1,
             supermarkets: 1,
+            supermarketNames: new Set<string>([String(row.supermarket)]),
             latest_report_at: row.created_at,
             offers: [{ ...row, is_lowest: true }],
           });
@@ -911,16 +949,12 @@ app.get(
         group.lowest_price_bs = Math.min(group.lowest_price_bs, priceBs);
         group.highest_price_bs = Math.max(group.highest_price_bs, priceBs);
         group.reports += 1;
-
-        if (!group.supermarketNames) {
-          group.supermarketNames = new Set<string>();
-        }
         group.supermarketNames.add(String(row.supermarket));
         group.supermarkets = group.supermarketNames.size;
 
         group.offers.push({
           ...row,
-          is_lowest: priceUsd === group.lowest_price_usd,
+          is_lowest: false,
         });
 
         const latest = new Date(group.latest_report_at).getTime();
@@ -938,6 +972,13 @@ app.get(
           prices.reduce((a: number, b: number) => a + b, 0) / prices.length;
         group.average_price_bs =
           pricesBs.reduce((a: number, b: number) => a + b, 0) / pricesBs.length;
+
+        // Recalcular la marca de precio más bajo después de conocer todas las ofertas.
+        const lowestUsd = Math.min(...prices);
+        group.offers = group.offers.map((offer: any) => ({
+          ...offer,
+          is_lowest: Number(offer.price_usd) === lowestUsd,
+        }));
 
         group.lowest_price_usd = roundMoney(group.lowest_price_usd);
         group.highest_price_usd = roundMoney(group.highest_price_usd);
@@ -987,7 +1028,13 @@ app.post(
         });
       }
 
-      const token = authHeader.slice(7);
+      const token = authHeader.slice(7).trim();
+      if (!token) {
+        return res.status(401).json({
+          error: "Sesión no válida. Debes iniciar sesión.",
+        });
+      }
+
       const {
         data: { user },
         error: authError,
@@ -1005,7 +1052,7 @@ app.post(
         });
       }
 
-      const { product, price_usd, price_bs, supermarket, city, state } = req.body;
+      const { product, price_usd, price_bs, supermarket, city, state } = req.body || {};
 
       const authUserId = user.id;
       const userEmail = user.email ?? null;
@@ -1015,10 +1062,10 @@ app.post(
           "Usuario"
       ).trim();
 
-      const priceUsd = Number(price_usd) || 0;
-      const priceBs = Number(price_bs) || 0;
+      const priceUsd = Number(price_usd);
+      const priceBs = Number(price_bs);
 
-      if (!product || priceUsd <= 0) {
+      if (!String(product || "").trim() || !Number.isFinite(priceUsd) || priceUsd <= 0) {
         return res.status(400).json({
           error: "Producto y precio son obligatorios",
         });
@@ -1042,12 +1089,12 @@ app.post(
         RETURNING *
         `,
         [
-          product.trim(),
+          String(product).trim(),
           priceUsd,
-          priceBs,
-          supermarket?.trim() || "No especificado",
-          city?.trim() || "No especificada",
-          state?.trim() || "No especificado",
+          Number.isFinite(priceBs) ? priceBs : null,
+          String(supermarket || "").trim() || "No especificado",
+          String(city || "").trim() || "No especificada",
+          String(state || "").trim() || "No especificado",
           userName,
           userEmail,
           authUserId,
@@ -1079,7 +1126,13 @@ app.delete(
         });
       }
 
-      const token = authHeader.slice(7);
+      const token = authHeader.slice(7).trim();
+      if (!token) {
+        return res.status(401).json({
+          error: "Sesión no válida.",
+        });
+      }
+
       const {
         data: { user },
         error: authError,
@@ -1101,7 +1154,7 @@ app.delete(
 
       const existing = await pool.query(
         `
-        SELECT id, auth_user_id, user_email
+        SELECT id, auth_user_id, user_email, created_at
         FROM community_prices
         WHERE id = $1
         LIMIT 1
@@ -1120,9 +1173,7 @@ app.delete(
         record.auth_user_id &&
         String(record.auth_user_id) === String(user.id);
 
-      const isAdmin =
-        String(user.email || "").toLowerCase() ===
-        "jucaviusallc@gmail.com";
+      const isAdmin = isAdminUser(user);
 
       if (!isOwner && !isAdmin) {
         return res.status(403).json({
@@ -1138,7 +1189,11 @@ app.delete(
         [id]
       );
 
-      return res.json({ success: true });
+      return res.json({
+        success: true,
+        deleted_id: id,
+        deleted_by: isAdmin && !isOwner ? "admin" : "owner",
+      });
     } catch (err) {
       console.error("Error al eliminar precio comunitario:", err);
       return res.status(500).json({
@@ -1147,6 +1202,23 @@ app.delete(
     }
   }
 );
+
+// Limpieza periódica adicional. Si el servidor permanece activo, los registros
+// vencidos se eliminan aunque nadie visite Comunidad. Los GET también ejecutan
+// la limpieza, por lo que la política funciona incluso tras un reinicio.
+const COMMUNITY_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+
+setInterval(() => {
+  cleanupExpiredCommunityPrices()
+    .then((deleted) => {
+      if (deleted > 0) {
+        console.log(`🧹 Comunidad: ${deleted} registro(s) vencido(s) eliminado(s).`);
+      }
+    })
+    .catch((err) => {
+      console.error("Error en limpieza automática de Comunidad:", err);
+    });
+}, COMMUNITY_CLEANUP_INTERVAL_MS);
 
 // ==========================================================
 // PRUEBA DE CONEXIÓN
