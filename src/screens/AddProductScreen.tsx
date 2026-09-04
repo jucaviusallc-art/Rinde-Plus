@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Camera, ScanLine } from "lucide-react";
+import { Camera, ScanLine, ShoppingCart } from "lucide-react";
 
 import {
   Budget,
@@ -47,19 +47,14 @@ export const AddProductScreen: React.FC<
     useState(false);
 
   // --------------------------------------------------
-  // TASA ACTIVA
+  // TASA ACTIVA (Heredada y validada desde App.tsx)
   // --------------------------------------------------
 
   const activeRate =
-    budget?.tipo_tasa === "custom" &&
-    Number.isFinite(budget.active_rate) &&
-    budget.active_rate > 0
-      ? budget.active_rate
-      : Number.isFinite(selectedRate ?? NaN) &&
-        (selectedRate ?? 0) > 0
+    Number.isFinite(selectedRate ?? NaN) &&
+    (selectedRate ?? 0) > 0
       ? selectedRate!
       : 0;
-
   // --------------------------------------------------
   // INFORMACIÓN DE MONEDA
   // --------------------------------------------------
@@ -520,8 +515,9 @@ export const AddProductScreen: React.FC<
             priceNumber <= 0 ||
             activeRate <= 0
           }
-          className="w-full py-3 rounded-xl bg-[#2E7D32] hover:bg-emerald-800 text-white font-black text-sm sm:text-base shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3 rounded-xl bg-[#2E7D32] hover:bg-emerald-800 text-white font-black text-sm sm:text-base shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
+          <ShoppingCart className="w-4 h-4" />
           Agregar al Carrito
         </button>
 

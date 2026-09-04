@@ -286,11 +286,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
 
         <p className="text-slate-600 dark:text-slate-300 text-[11px] sm:text-xs max-w-xl">
-          Controla tu presupuesto de compras en
-          tiempo real en Venezuela. Convierte Bs a{" "}
-          {currencyLabel} instantáneamente usando la
-          tasa seleccionada.
-        </p>
+  Controla tu presupuesto de compras en tiempo real en Venezuela. Convierte Bs a Dólares o Euros instantáneamente usando la tasa oficial del Banco Central de Venezuela.
+</p>
 
       </div>
 
